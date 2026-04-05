@@ -20,6 +20,7 @@ export const THEME_OPTIONS = [
 ] as const;
 
 export type Theme = (typeof THEME_OPTIONS)[number]["value"];
+export const HASAN_SIGNATURE_THEME_CLASS = "theme-hasan-signature";
 
 const THEME_VALUES = new Set<Theme>(THEME_OPTIONS.map((option) => option.value));
 
@@ -41,4 +42,8 @@ export function resolveTheme(theme: Theme, systemDark: boolean): "light" | "dark
 
 export function resolveDesktopTheme(theme: Theme): DesktopTheme {
   return DESKTOP_THEME_BY_THEME[theme];
+}
+
+export function resolveThemeClassName(theme: Theme): string | null {
+  return theme === "hasan-signature" ? HASAN_SIGNATURE_THEME_CLASS : null;
 }

@@ -178,6 +178,10 @@
 :root {
   color-scheme: light;
   --radius: 0.625rem;
+  --font-body: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-sans: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --font-display: var(--font-sans);
   --background: var(--color-white);
   --foreground: var(--color-neutral-800);
   --card: var(--color-white);
@@ -235,13 +239,7 @@
 }
 
 body {
-  font-family:
-    "DM Sans",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    system-ui,
-    sans-serif;
+  font-family: var(--font-body);
   margin: 0;
   padding: 0;
   min-height: 100vh;
@@ -274,7 +272,194 @@ pre,
 code,
 textarea,
 input {
-  font-family: "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-family: var(--font-mono);
+}
+
+button,
+select,
+optgroup,
+option,
+summary {
+  font-family: var(--font-body);
+}
+
+:root.theme-hasan-signature {
+  color-scheme: dark;
+  --radius: 0.45rem;
+  --font-body: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-display: "Space Grotesk", var(--font-sans);
+  --background: #0f0f0f;
+  --foreground: #f5f5f5;
+  --card: #171717;
+  --card-foreground: #f5f5f5;
+  --popover: #171717;
+  --popover-foreground: #f5f5f5;
+  --primary: #fb7185;
+  --primary-foreground: #0f0f0f;
+  --secondary: color-mix(in srgb, #171717 88%, #0f0f0f);
+  --secondary-foreground: #f5f5f5;
+  --muted: color-mix(in srgb, #171717 92%, #0f0f0f);
+  --muted-foreground: #737373;
+  --accent: color-mix(in srgb, #fb7185 12%, #171717);
+  --accent-foreground: #f5f5f5;
+  --destructive: color-mix(in srgb, var(--color-red-500) 84%, #fb7185);
+  --border: #262626;
+  --input: color-mix(in srgb, #262626 80%, #171717);
+  --ring: #fb7185;
+  --destructive-foreground: color-mix(in srgb, var(--color-red-300) 86%, #f5f5f5);
+  --info: color-mix(in srgb, #fb7185 78%, #f5f5f5);
+  --info-foreground: #fb7185;
+  --success: color-mix(in srgb, var(--color-emerald-400) 84%, #f5f5f5);
+  --success-foreground: color-mix(in srgb, var(--color-emerald-300) 90%, #f5f5f5);
+  --warning: color-mix(in srgb, var(--color-amber-400) 84%, #f5f5f5);
+  --warning-foreground: color-mix(in srgb, var(--color-amber-300) 92%, #f5f5f5);
+}
+
+:root.theme-hasan-signature body {
+  letter-spacing: -0.01em;
+  background:
+    radial-gradient(
+      120rem 42rem at top center,
+      color-mix(in srgb, var(--primary) 10%, transparent),
+      transparent 58%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--background) 96%, var(--card)) 0%,
+      var(--background) 100%
+    );
+}
+
+:root.theme-hasan-signature body::after {
+  opacity: 0.024;
+  mix-blend-mode: screen;
+}
+
+:root.theme-hasan-signature :is(button, input, textarea, select, optgroup, option, summary) {
+  font-family: inherit;
+}
+
+:root.theme-hasan-signature :is(h1, h2, h3, h4, h5, h6, [data-display], .font-display) {
+  font-family: var(--font-display);
+  letter-spacing: -0.04em;
+}
+
+:root.theme-hasan-signature ::selection {
+  background: var(--primary);
+  color: #0f0f0f;
+}
+
+:root.theme-hasan-signature :focus-visible {
+  outline-color: var(--ring);
+}
+
+:root.theme-hasan-signature
+  :is(
+    [data-slot="button"],
+    [data-slot="card"],
+    [data-slot="card-frame"],
+    [data-slot="empty"],
+    [data-slot="input-control"],
+    [data-slot="select-trigger"],
+    .theme-shell-card,
+    .theme-shell-chip
+  ) {
+  box-shadow: none !important;
+}
+
+:root.theme-hasan-signature
+  :is(
+    [data-slot="button"],
+    [data-slot="card"],
+    [data-slot="card-frame"],
+    [data-slot="input-control"],
+    [data-slot="select-trigger"]
+  )::before {
+  box-shadow: none !important;
+}
+
+:root.theme-hasan-signature
+  :is(
+    [data-slot="button"],
+    [data-slot="input-control"],
+    [data-slot="select-trigger"],
+    [data-slot="select-button"]
+  ) {
+  border-color: color-mix(in srgb, var(--border) 94%, var(--primary) 6%);
+}
+
+:root.theme-hasan-signature
+  :is([data-slot="button"], [data-slot="select-trigger"], [data-slot="select-button"]):hover {
+  border-color: color-mix(in srgb, var(--primary) 36%, var(--border));
+}
+
+:root.theme-hasan-signature :is(hr, [role="separator"], [data-slot="separator"]) {
+  border-color: var(--border);
+}
+
+:root.theme-hasan-signature ::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--border) 88%, var(--foreground));
+}
+
+:root.theme-hasan-signature ::-webkit-scrollbar-thumb:hover,
+:root.theme-hasan-signature.dark ::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--primary) 20%, var(--border));
+}
+
+.theme-shell-glow-error {
+  background: radial-gradient(
+    44rem 16rem at top,
+    color-mix(in srgb, var(--color-red-500) 16%, transparent),
+    transparent
+  );
+}
+
+.theme-shell-glow-warning {
+  background: radial-gradient(
+    48rem 18rem at top,
+    color-mix(in srgb, var(--color-amber-500) 16%, transparent),
+    transparent
+  );
+}
+
+.theme-shell-gradient {
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--background) 90%, var(--color-black)) 0%,
+    var(--background) 55%
+  );
+}
+
+:root.theme-hasan-signature .theme-shell-glow-error,
+:root.theme-hasan-signature .theme-shell-glow-warning {
+  background: radial-gradient(
+    56rem 18rem at top,
+    color-mix(in srgb, var(--primary) 14%, transparent),
+    transparent
+  );
+}
+
+:root.theme-hasan-signature .theme-shell-gradient {
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--background) 94%, var(--card)) 0%,
+    var(--background) 58%
+  );
+}
+
+:root.theme-hasan-signature .theme-shell-card {
+  background: color-mix(in srgb, var(--card) 94%, var(--background));
+  border-color: color-mix(in srgb, var(--border) 92%, var(--foreground) 8%);
+  box-shadow: none !important;
+  backdrop-filter: blur(10px);
+}
+
+:root.theme-hasan-signature .theme-shell-chip {
+  background: color-mix(in srgb, var(--card) 92%, var(--background));
+  border-color: var(--border);
+  box-shadow: none !important;
 }
 
 /* Window drag region (frameless titlebar) */

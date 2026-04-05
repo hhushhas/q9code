@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 
-import { isTheme, resolveDesktopTheme, resolveTheme, type Theme } from "../lib/theme";
 import type { DesktopTheme } from "@t3tools/contracts";
+import {
+  HASAN_SIGNATURE_THEME_CLASS,
+  isTheme,
+  resolveDesktopTheme,
+  resolveTheme,
+  resolveThemeClassName,
+  type Theme,
+} from "../lib/theme";
 
 type ThemeSnapshot = {
   theme: Theme;
@@ -34,6 +41,11 @@ function applyTheme(theme: Theme, suppressTransitions = false) {
   }
   const isDark = resolveTheme(theme, getSystemDark()) === "dark";
   document.documentElement.classList.toggle("dark", isDark);
+  document.documentElement.classList.remove(HASAN_SIGNATURE_THEME_CLASS);
+  const themeClassName = resolveThemeClassName(theme);
+  if (themeClassName !== null) {
+    document.documentElement.classList.add(themeClassName);
+  }
   syncDesktopTheme(theme);
   if (suppressTransitions) {
     // Force a reflow so the no-transitions class takes effect before removal
