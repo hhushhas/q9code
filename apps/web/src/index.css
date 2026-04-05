@@ -52,6 +52,120 @@
   }
 }
 
+/* Hasan Signature theme override */
+:root.theme-hasan-signature,
+.theme-hasan-signature {
+  color-scheme: dark;
+  --radius: 0.6875rem;
+  --background: #0f0f0f;
+  --foreground: #f5f5f5;
+  --card: #171717;
+  --card-foreground: #f5f5f5;
+  --popover: #171717;
+  --popover-foreground: #f5f5f5;
+  --primary: #fb7185;
+  --primary-foreground: #0f0f0f;
+  --secondary: #171717;
+  --secondary-foreground: #f5f5f5;
+  --muted: #151515;
+  --muted-foreground: #737373;
+  --accent: #fb7185;
+  --accent-foreground: #0f0f0f;
+  --destructive: #f87171;
+  --border: #262626;
+  --input: #262626;
+  --ring: #fb7185;
+  --destructive-foreground: #0f0f0f;
+  --info: #fb7185;
+  --info-foreground: #fde2e7;
+  --success: #34d399;
+  --success-foreground: #d1fae5;
+  --warning: #fbbf24;
+  --warning-foreground: #fef3c7;
+  --font-body: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: "Space Grotesk", var(--font-sans);
+}
+
+@layer base {
+  :root.theme-hasan-signature,
+  .theme-hasan-signature {
+    background-color: var(--background);
+  }
+
+  :root.theme-hasan-signature body,
+  .theme-hasan-signature body {
+    font-family: var(--font-body);
+    letter-spacing: -0.01em;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background:
+      radial-gradient(
+        circle at 50% 0%,
+        color-mix(in srgb, var(--accent) 10%, transparent),
+        transparent 42%
+      ),
+      linear-gradient(180deg, #141414 0%, #0f0f0f 46%, #0d0d0d 100%);
+    background-attachment: fixed;
+  }
+
+  :root.theme-hasan-signature body::after,
+  .theme-hasan-signature body::after {
+    opacity: 0.022;
+    background-size: 320px 320px;
+    mix-blend-mode: soft-light;
+  }
+
+  :root.theme-hasan-signature :is(button, input, textarea, select, optgroup, option, summary),
+  .theme-hasan-signature :is(button, input, textarea, select, optgroup, option, summary) {
+    font-family: inherit;
+  }
+
+  :root.theme-hasan-signature :is(h1, h2, h3, h4, h5, h6, [data-display], .font-display),
+  .theme-hasan-signature :is(h1, h2, h3, h4, h5, h6, [data-display], .font-display) {
+    font-family: var(--font-display);
+    letter-spacing: -0.045em;
+  }
+
+  :root.theme-hasan-signature ::selection,
+  .theme-hasan-signature ::selection {
+    background: color-mix(in srgb, var(--accent) 68%, var(--background));
+    color: var(--accent-foreground);
+  }
+
+  :root.theme-hasan-signature :focus-visible,
+  .theme-hasan-signature :focus-visible {
+    outline-color: var(--ring);
+    outline-offset: 3px;
+  }
+
+  :root.theme-hasan-signature :is(hr, [role="separator"], [data-slot="separator"]),
+  .theme-hasan-signature :is(hr, [role="separator"], [data-slot="separator"]) {
+    border-color: var(--border);
+  }
+
+  :root.theme-hasan-signature ::-webkit-scrollbar-thumb,
+  .theme-hasan-signature ::-webkit-scrollbar-thumb {
+    background: #262626;
+  }
+
+  :root.theme-hasan-signature ::-webkit-scrollbar-thumb:hover,
+  .theme-hasan-signature ::-webkit-scrollbar-thumb:hover {
+    background: #363636;
+  }
+
+  :root.theme-hasan-signature .dark ::-webkit-scrollbar-thumb,
+  .theme-hasan-signature .dark ::-webkit-scrollbar-thumb {
+    background: #262626;
+  }
+
+  :root.theme-hasan-signature .dark ::-webkit-scrollbar-thumb:hover,
+  .theme-hasan-signature .dark ::-webkit-scrollbar-thumb:hover {
+    background: #363636;
+  }
+}
+
 /* Suppress all transitions during theme changes */
 .no-transitions,
 .no-transitions *,
