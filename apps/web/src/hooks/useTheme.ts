@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 
-type Theme = "light" | "dark" | "system";
+import { isTheme, resolveDesktopTheme, resolveTheme, type Theme } from "../lib/theme";
+import type { DesktopTheme } from "@t3tools/contracts";
+
 type ThemeSnapshot = {
   theme: Theme;
   systemDark: boolean;
@@ -11,7 +13,7 @@ const MEDIA_QUERY = "(prefers-color-scheme: dark)";
 
 let listeners: Array<() => void> = [];
 let lastSnapshot: ThemeSnapshot | null = null;
-let lastDesktopTheme: Theme | null = null;
+let lastDesktopTheme: DesktopTheme | null = null;
 function emitChange() {
   for (const listener of listeners) listener();
 }
@@ -22,7 +24,7 @@ function getSystemDark(): boolean {
 
 function getStored(): Theme {
   const raw = localStorage.getItem(STORAGE_KEY);
-  if (raw === "light" || raw === "dark" || raw === "system") return raw;
+  if (isTheme(raw)) return raw;
   return "system";
 }
 
@@ -30,7 +32,7 @@ function applyTheme(theme: Theme, suppressTransitions = false) {
   if (suppressTransitions) {
     document.documentElement.classList.add("no-transitions");
   }
-  const isDark = theme === "dark" || (theme === "system" && getSystemDark());
+  const isDark = resolveTheme(theme, getSystemDark()) === "dark";
   document.documentElement.classList.toggle("dark", isDark);
   syncDesktopTheme(theme);
   if (suppressTransitions) {
@@ -45,13 +47,14 @@ function applyTheme(theme: Theme, suppressTransitions = false) {
 
 function syncDesktopTheme(theme: Theme) {
   const bridge = window.desktopBridge;
-  if (!bridge || lastDesktopTheme === theme) {
+  const desktopTheme = resolveDesktopTheme(theme);
+  if (!bridge || lastDesktopTheme === desktopTheme) {
     return;
   }
 
-  lastDesktopTheme = theme;
-  void bridge.setTheme(theme).catch(() => {
-    if (lastDesktopTheme === theme) {
+  lastDesktopTheme = desktopTheme;
+  void bridge.setTheme(desktopTheme).catch(() => {
+    if (lastDesktopTheme === desktopTheme) {
       lastDesktopTheme = null;
     }
   });
@@ -103,8 +106,7 @@ export function useTheme() {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot);
   const theme = snapshot.theme;
 
-  const resolvedTheme: "light" | "dark" =
-    theme === "system" ? (snapshot.systemDark ? "dark" : "light") : theme;
+  const resolvedTheme: "light" | "dark" = resolveTheme(theme, snapshot.systemDark);
 
   const setTheme = useCallback((next: Theme) => {
     localStorage.setItem(STORAGE_KEY, next);
