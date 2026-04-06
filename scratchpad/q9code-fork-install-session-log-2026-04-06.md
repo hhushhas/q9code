@@ -5,3 +5,6 @@
 2026-04-06 09:40:34 +0500 | Built production macOS artifact: release/Q9-Code-0.0.15-arm64.dmg and installed /Applications/Q9 Code (Alpha).app with updater feed owner=hhushhas repo=q9code.
 2026-04-06 09:48:14 +0500 | Isolated Q9 desktop runtime defaults to ~/.q9 (with Q9CODE_HOME override and T3CODE_HOME fallback) to avoid sharing upstream ~/.t3 state.
 2026-04-06 09:48:15 +0500 | Re-ran gate after runtime isolation change: bun fmt, bun lint, bun typecheck, and bun run test all passed.
+2026-04-06 10:01:14 +0500 | Updated Q9 production logo assets from T3 to Q9 across prod/web/marketing/desktop icon surfaces.
+2026-04-06 10:01:15 +0500 | Changed Q9 default backend home back to ~/.t3 so threads and state carry over with upstream T3 Code, while preserving Q9CODE_HOME override for optional isolation.
+2026-04-06 10:09:42 +0500 | Extracted desktop base-dir resolution into a shared helper with regression coverage to keep Q9/T3 thread sharing stable, then re-ran bun fmt, bun lint, bun typecheck, and bun run test successfully.

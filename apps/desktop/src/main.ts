@@ -30,6 +30,7 @@ import { NetService } from "@t3tools/shared/Net";
 import { RotatingFileSink } from "@t3tools/shared/logging";
 import { parsePersistedServerObservabilitySettings } from "@t3tools/shared/serverSettings";
 import { showDesktopConfirmDialog } from "./confirmDialog";
+import { resolveDesktopBaseDir } from "./runtimePaths";
 import { syncShellEnvironment } from "./syncShellEnvironment";
 import { getAutoUpdateDisabledReason, shouldBroadcastDownloadProgress } from "./updateState";
 import {
@@ -60,10 +61,7 @@ const UPDATE_DOWNLOAD_CHANNEL = "desktop:update-download";
 const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
 const UPDATE_CHECK_CHANNEL = "desktop:update-check";
 const GET_WS_URL_CHANNEL = "desktop:get-ws-url";
-const BASE_DIR =
-  process.env.Q9CODE_HOME?.trim() ||
-  process.env.T3CODE_HOME?.trim() ||
-  Path.join(OS.homedir(), ".q9");
+const BASE_DIR = resolveDesktopBaseDir({ env: process.env, homedir: OS.homedir() });
 const STATE_DIR = Path.join(BASE_DIR, "userdata");
 const DESKTOP_SCHEME = "t3";
 const ROOT_DIR = Path.resolve(__dirname, "../../..");
