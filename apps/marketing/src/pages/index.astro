@@ -3,7 +3,7 @@ import Layout from "../layouts/Layout.astro";
 ---
 
 <Layout>
-  <h1 class="tagline">T3 Code is the best way to code with AI.</h1>
+  <h1 class="tagline">Q9 Code is the best way to code with AI.</h1>
 
   <a
     id="download-btn"
@@ -19,7 +19,7 @@ import Layout from "../layouts/Layout.astro";
   <a href="/download" class="other-platforms">Other platforms</a>
 
   <div class="screenshot-wrap">
-    <img src="/screenshot.jpeg" alt="T3 Code" class="screenshot" />
+    <img src="/screenshot.jpeg" alt="Q9 Code" class="screenshot" />
   </div>
 </Layout>
 
@@ -116,8 +116,8 @@ import Layout from "../layouts/Layout.astro";
     display: inline-flex;
     align-items: center;
     gap: 0.55rem;
-    background: #fafafa;
-    color: #09090b;
+    background: var(--accent);
+    color: var(--bg);
     padding: 0.75rem 2rem;
     border-radius: 999px;
     font-weight: 600;
@@ -130,7 +130,7 @@ import Layout from "../layouts/Layout.astro";
 
   .hero-button:hover {
     transform: scale(1.03);
-    box-shadow: 0 0 24px rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 24%, transparent);
   }
 
   .hero-button:active {
@@ -166,13 +166,13 @@ import Layout from "../layouts/Layout.astro";
     animation: fade-in 1s ease-out 0.3s forwards;
     transition: color 0.3s ease;
     text-decoration: underline;
-    text-decoration-color: rgba(113, 113, 122, 0.4);
+    text-decoration-color: color-mix(in srgb, var(--accent) 30%, transparent);
     text-underline-offset: 3px;
   }
 
   .other-platforms:hover {
-    color: var(--fg-muted);
-    text-decoration-color: var(--fg-muted);
+    color: var(--accent);
+    text-decoration-color: var(--accent);
   }
 
   /* ── Screenshot ── */
