@@ -11,3 +11,4 @@
 2026-04-06 10:12:06 +0500 | Restored assets/prod/logo.svg to the original upstream vector so branding work can be redone from the source asset without disturbing the thread-sharing/runtime changes.
 2026-04-06 11:48:18 +0500 | Picked up updated Q9 branding copy across docs and marketing surfaces (AGENTS, README, marketing layout, index, and download pages) for commit, push, CI verification, and fresh DMG packaging.
 2026-04-06 13:18:49 +0500 | Regenerated dev/prod raster icon sets plus web, marketing, and desktop shipped icon assets from the updated Q9 source SVGs, keeping the rest of the in-flight code changes out of scope for this packaging pass.
+2026-04-06 14:07:25 +0500 | Continued the packaging pass after a fresh logo adjustment, confirming the new changes are isolated to regenerated branding assets so they can be committed, pushed, and rebuilt from a clean temp clone without disturbing unrelated in-progress code edits.
