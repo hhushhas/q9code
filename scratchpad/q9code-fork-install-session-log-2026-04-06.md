@@ -8,3 +8,4 @@
 2026-04-06 10:01:14 +0500 | Updated Q9 production logo assets from T3 to Q9 across prod/web/marketing/desktop icon surfaces.
 2026-04-06 10:01:15 +0500 | Changed Q9 default backend home back to ~/.t3 so threads and state carry over with upstream T3 Code, while preserving Q9CODE_HOME override for optional isolation.
 2026-04-06 10:09:42 +0500 | Extracted desktop base-dir resolution into a shared helper with regression coverage to keep Q9/T3 thread sharing stable, then re-ran bun fmt, bun lint, bun typecheck, and bun run test successfully.
+2026-04-06 10:12:06 +0500 | Restored assets/prod/logo.svg to the original upstream vector so branding work can be redone from the source asset without disturbing the thread-sharing/runtime changes.
