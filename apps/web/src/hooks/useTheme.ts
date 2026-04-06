@@ -2,11 +2,11 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 import type { DesktopTheme } from "@t3tools/contracts";
 import {
-  HASAN_SIGNATURE_THEME_CLASS,
   isTheme,
   resolveDesktopTheme,
   resolveTheme,
   resolveThemeClassName,
+  THEME_CLASS_NAMES,
   type Theme,
 } from "../lib/theme";
 
@@ -41,7 +41,7 @@ function applyTheme(theme: Theme, suppressTransitions = false) {
   }
   const isDark = resolveTheme(theme, getSystemDark()) === "dark";
   document.documentElement.classList.toggle("dark", isDark);
-  document.documentElement.classList.remove(HASAN_SIGNATURE_THEME_CLASS);
+  document.documentElement.classList.remove(...THEME_CLASS_NAMES);
   const themeClassName = resolveThemeClassName(theme);
   if (themeClassName !== null) {
     document.documentElement.classList.add(themeClassName);

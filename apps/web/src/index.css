@@ -283,13 +283,17 @@ summary {
   font-family: var(--font-body);
 }
 
-:root.theme-hasan-signature {
-  color-scheme: dark;
+:root.theme-hasan-signature,
+:root.theme-hasan-signature-light {
   --radius: 0.45rem;
   --font-body: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --font-display: "Space Grotesk", var(--font-sans);
+}
+
+:root.theme-hasan-signature {
+  color-scheme: dark;
   --background: #0f0f0f;
   --foreground: #f5f5f5;
   --card: #171717;
@@ -317,8 +321,41 @@ summary {
   --warning-foreground: color-mix(in srgb, var(--color-amber-300) 92%, #f5f5f5);
 }
 
-:root.theme-hasan-signature body {
+:root.theme-hasan-signature-light {
+  color-scheme: light;
+  --background: #f6f1ea;
+  --foreground: #181411;
+  --card: #fffaf4;
+  --card-foreground: #181411;
+  --popover: #fffaf4;
+  --popover-foreground: #181411;
+  --primary: #e11d48;
+  --primary-foreground: #fff7f3;
+  --secondary: color-mix(in srgb, #ede6de 84%, #fffaf4);
+  --secondary-foreground: #241d18;
+  --muted: color-mix(in srgb, #ece4db 88%, #fffaf4);
+  --muted-foreground: #6e655d;
+  --accent: color-mix(in srgb, #e11d48 9%, #fffaf4);
+  --accent-foreground: #3d141f;
+  --destructive: color-mix(in srgb, var(--color-red-600) 88%, #fffaf4);
+  --border: #d8cdc2;
+  --input: color-mix(in srgb, #d8cdc2 64%, #fffaf4);
+  --ring: #e11d48;
+  --destructive-foreground: color-mix(in srgb, var(--color-red-800) 84%, #181411);
+  --info: color-mix(in srgb, #e11d48 68%, #fffaf4);
+  --info-foreground: #b2173a;
+  --success: color-mix(in srgb, var(--color-emerald-600) 82%, #fffaf4);
+  --success-foreground: color-mix(in srgb, var(--color-emerald-800) 84%, #181411);
+  --warning: color-mix(in srgb, var(--color-amber-500) 84%, #fffaf4);
+  --warning-foreground: color-mix(in srgb, var(--color-amber-800) 84%, #181411);
+}
+
+:root.theme-hasan-signature body,
+:root.theme-hasan-signature-light body {
   letter-spacing: -0.01em;
+}
+
+:root.theme-hasan-signature body {
   background:
     radial-gradient(
       120rem 42rem at top center,
@@ -332,30 +369,61 @@ summary {
     );
 }
 
+:root.theme-hasan-signature-light body {
+  background:
+    radial-gradient(
+      110rem 38rem at top center,
+      color-mix(in srgb, var(--primary) 8%, transparent),
+      transparent 60%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--background) 78%, #ffffff) 0%,
+      var(--background) 100%
+    );
+}
+
 :root.theme-hasan-signature body::after {
   opacity: 0.024;
   mix-blend-mode: screen;
 }
 
-:root.theme-hasan-signature :is(button, input, textarea, select, optgroup, option, summary) {
+:root.theme-hasan-signature-light body::after {
+  opacity: 0.02;
+  mix-blend-mode: multiply;
+}
+
+:root.theme-hasan-signature :is(button, input, textarea, select, optgroup, option, summary),
+:root.theme-hasan-signature-light :is(button, input, textarea, select, optgroup, option, summary) {
   font-family: inherit;
 }
 
-:root.theme-hasan-signature :is(h1, h2, h3, h4, h5, h6, [data-display], .font-display) {
+:root.theme-hasan-signature :is(h1, h2, h3, h4, h5, h6, [data-display], .font-display),
+:root.theme-hasan-signature-light :is(h1, h2, h3, h4, h5, h6, [data-display], .font-display) {
   font-family: var(--font-display);
   letter-spacing: -0.04em;
 }
 
-:root.theme-hasan-signature ::selection {
+:root.theme-hasan-signature ::selection,
+:root.theme-hasan-signature-light ::selection {
   background: var(--primary);
+}
+
+:root.theme-hasan-signature ::selection {
   color: #0f0f0f;
 }
 
-:root.theme-hasan-signature :focus-visible {
+:root.theme-hasan-signature-light ::selection {
+  color: #fff7f3;
+}
+
+:root.theme-hasan-signature :focus-visible,
+:root.theme-hasan-signature-light :focus-visible {
   outline-color: var(--ring);
 }
 
-:root.theme-hasan-signature
+:root.theme-hasan-signature,
+:root.theme-hasan-signature-light
   :is(
     [data-slot="button"],
     [data-slot="card"],
@@ -369,7 +437,8 @@ summary {
   box-shadow: none !important;
 }
 
-:root.theme-hasan-signature
+:root.theme-hasan-signature,
+:root.theme-hasan-signature-light
   :is(
     [data-slot="button"],
     [data-slot="card"],
@@ -380,7 +449,8 @@ summary {
   box-shadow: none !important;
 }
 
-:root.theme-hasan-signature
+:root.theme-hasan-signature,
+:root.theme-hasan-signature-light
   :is(
     [data-slot="button"],
     [data-slot="input-control"],
@@ -390,21 +460,25 @@ summary {
   border-color: color-mix(in srgb, var(--border) 94%, var(--primary) 6%);
 }
 
-:root.theme-hasan-signature
+:root.theme-hasan-signature,
+:root.theme-hasan-signature-light
   :is([data-slot="button"], [data-slot="select-trigger"], [data-slot="select-button"]):hover {
   border-color: color-mix(in srgb, var(--primary) 36%, var(--border));
 }
 
-:root.theme-hasan-signature :is(hr, [role="separator"], [data-slot="separator"]) {
+:root.theme-hasan-signature :is(hr, [role="separator"], [data-slot="separator"]),
+:root.theme-hasan-signature-light :is(hr, [role="separator"], [data-slot="separator"]) {
   border-color: var(--border);
 }
 
-:root.theme-hasan-signature ::-webkit-scrollbar-thumb {
+:root.theme-hasan-signature ::-webkit-scrollbar-thumb,
+:root.theme-hasan-signature-light ::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--border) 88%, var(--foreground));
 }
 
 :root.theme-hasan-signature ::-webkit-scrollbar-thumb:hover,
-:root.theme-hasan-signature.dark ::-webkit-scrollbar-thumb:hover {
+:root.theme-hasan-signature.dark ::-webkit-scrollbar-thumb:hover,
+:root.theme-hasan-signature-light ::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--primary) 20%, var(--border));
 }
 
@@ -441,11 +515,28 @@ summary {
   );
 }
 
+:root.theme-hasan-signature-light .theme-shell-glow-error,
+:root.theme-hasan-signature-light .theme-shell-glow-warning {
+  background: radial-gradient(
+    56rem 18rem at top,
+    color-mix(in srgb, var(--primary) 10%, transparent),
+    transparent
+  );
+}
+
 :root.theme-hasan-signature .theme-shell-gradient {
   background: linear-gradient(
     145deg,
     color-mix(in srgb, var(--background) 94%, var(--card)) 0%,
     var(--background) 58%
+  );
+}
+
+:root.theme-hasan-signature-light .theme-shell-gradient {
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--background) 72%, #ffffff) 0%,
+    color-mix(in srgb, var(--background) 92%, var(--card)) 58%
   );
 }
 
@@ -456,8 +547,21 @@ summary {
   backdrop-filter: blur(10px);
 }
 
+:root.theme-hasan-signature-light .theme-shell-card {
+  background: color-mix(in srgb, var(--card) 82%, #ffffff);
+  border-color: color-mix(in srgb, var(--border) 92%, var(--foreground) 8%);
+  box-shadow: none !important;
+  backdrop-filter: blur(10px);
+}
+
 :root.theme-hasan-signature .theme-shell-chip {
   background: color-mix(in srgb, var(--card) 92%, var(--background));
+  border-color: var(--border);
+  box-shadow: none !important;
+}
+
+:root.theme-hasan-signature-light .theme-shell-chip {
+  background: color-mix(in srgb, var(--card) 88%, #ffffff);
   border-color: var(--border);
   box-shadow: none !important;
 }
