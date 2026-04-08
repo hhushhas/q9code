@@ -21,12 +21,13 @@ The human should not have to manually coordinate 15 to 20 separate agent threads
 2. The default human entry point for a project is the manager, not a worker.
 3. The manager is a coordinator, not a primary executor.
 4. Workers are bounded executors launched by the manager to carry out specific tasks.
-5. The manager owns a sacred scratchpad folder for project-local coordination memory.
-6. The manager owns an append-only sacred session log inside that folder.
-7. Workers may read from and write to the manager folder, but only within that manager-owned scope.
-8. The human may inspect workers, but should rarely need to.
-9. The manager must summarize and reconcile worker progress for the human.
-10. A project should never require multiple top-level managers unless explicitly designed otherwise in a future version.
+5. The human must be able to rename the manager.
+6. The manager owns a sacred scratchpad folder for project-local coordination memory.
+7. The manager owns an append-only sacred session log inside that folder.
+8. Workers may read from and write to the manager folder, but only within that manager-owned scope.
+9. The human may inspect workers, but should rarely need to.
+10. The manager must summarize and reconcile worker progress for the human.
+11. A project should never require multiple top-level managers unless explicitly designed otherwise in a future version.
 
 ## Role Model
 
@@ -38,6 +39,7 @@ The manager is responsible for:
 - deciding whether to answer directly or delegate
 - breaking work into bounded worker tasks
 - tracking worker status
+- being alerted when a worker changes state in a way that matters
 - maintaining continuity through the sacred log
 - summarizing outcomes back to the human
 - reducing cognitive switching for the human
@@ -56,11 +58,12 @@ The worker is responsible for:
 - reporting concrete outcomes
 - staying scoped to the assignment
 - writing useful trace information into manager-owned memory when appropriate
+- optionally using codex-app subagents for exploration, investigation, or support work when helpful
 
 The worker is not supposed to:
 
 - become a second manager
-- launch other workers by default
+- launch sibling or child workers inside the Q9 manager-worker hierarchy
 - own independent long-lived coordination state outside the manager system
 
 ## Memory Model
@@ -100,7 +103,7 @@ Initial policy:
 Initial Q9 mapping:
 
 - manager: `gpt-5.4`
-- worker: `gpt-5-codex`
+- worker: `gpt-5.4`
 - manager interaction mode: `default` only
 
 Future-friendly requirement:
@@ -115,6 +118,7 @@ The human experience should be:
 - calm, legible, and low-switching
 - audit-friendly
 - manager-centric
+- understandable at a glance
 - capable of showing depth without demanding attention to it
 
 The user should feel:
@@ -124,13 +128,9 @@ The user should feel:
 
 ## UI Layout
 
-The UI should follow the existing design system:
+The UI should follow [design.md](/Users/macmini/Desktop/Code/t3code/design.md).
 
-- restrained dark archive/editorial feel
-- dense but calm
-- thin borders, not heavy surfaces
-- mono-first labeling and metadata
-- one warm accent for active state
+This spec should focus primarily on layout, semantics, and information hierarchy rather than restating theme tokens.
 
 ### Project Sidebar
 
@@ -139,8 +139,10 @@ Each project should visually center around its manager.
 Rules:
 
 - manager row appears first in the project section
+- manager row uses the human-provided manager name
 - manager row is clearly labeled and visually primary
 - worker rows appear beneath the manager as secondary items
+- worker rows are indented and nested under their manager
 - worker rows may be collapsible under the manager
 - the human should be able to ignore worker rows without losing understanding
 
@@ -152,20 +154,30 @@ Recommended presentation:
 
 ### Main Conversation Area
 
-When the manager is open, the main pane should feel like the control center for the project.
+When the manager is open, the main pane should feel like the control center for the project, and the manager overview should remain visible at all times.
 
 Recommended sections:
 
-1. Manager conversation timeline
-2. Current worker strip or table
-3. Sacred memory shortcuts
-4. Delegation composer state
+1. Persistent manager overview
+2. Manager conversation timeline
+3. Current worker strip or table
+4. Sacred memory shortcuts
+5. Delegation composer state
+
+The persistent manager overview should summarize, at a glance:
+
+- active workers
+- blocked workers
+- recently completed workers
+- outstanding manager decisions
+- whether the manager is waiting on the human or on workers
 
 Behavior:
 
 - the manager conversation remains the default focus
 - worker activity appears as summarized operational context, not as primary conversation clutter
 - the sacred log and manager folder should be one click away
+- important worker completions should surface back into the manager view without requiring the human to manually ping the manager
 
 ### Worker Visibility
 
@@ -191,6 +203,24 @@ When viewing a worker thread:
 - controls may remain normal
 - the worker should still visually indicate that it belongs to a manager
 
+## Prompt and Instruction Layering
+
+Manager and worker instructions should be injectable through `AGENTS.md`, but the instruction system must preserve role integrity.
+
+Requirements:
+
+- shared project guidance may come from `AGENTS.md`
+- manager-specific instructions must remain authoritative for manager behavior
+- worker-specific instructions must remain authoritative for worker behavior
+- injected instructions must compose rather than conflict
+- the system should avoid producing ambiguous blended prompts that make a manager behave like a worker or vice versa
+
+Practical rule:
+
+- `AGENTS.md` should provide project-level guidance
+- role prompts should provide manager-versus-worker behavioral policy
+- if the two conflict, role policy should win for role-specific behavior
+
 ## Delegation Flow
 
 The ideal flow is:
@@ -200,13 +230,15 @@ The ideal flow is:
 3. Manager launches one or more bounded workers when execution is required.
 4. Workers execute and report progress.
 5. Key lifecycle events are captured in the sacred log.
-6. Manager reconciles outcomes and reports back to the human.
+6. When a worker finishes, fails, or materially changes state, the manager is alerted automatically.
+7. Manager reconciles outcomes and reports back to the human.
 
 The human should not need to:
 
 - manually pick which worker to message next
 - manually reconcile conflicting worker outputs
 - manually remember which worker did what
+- manually ping the manager just to make it notice worker completion
 
 ## Status Model
 
@@ -226,6 +258,14 @@ The manager should be able to summarize:
 - what is blocked
 - what is complete
 - what needs human input
+
+The manager should also receive internal alerts for:
+
+- worker completed
+- worker failed
+- worker blocked
+- worker waiting on human input
+- worker produced a result that requires managerial synthesis
 
 ## Failure and Recovery
 
@@ -247,6 +287,11 @@ This spec does not require:
 - full replacement of all thread views with manager-only abstractions
 - advanced memory retrieval or semantic search over sacred logs
 - automatic conflict resolution between workers beyond manager mediation
+- worker-created Q9 workers beneath the manager-worker hierarchy
+
+This spec does allow:
+
+- workers to use codex-app's own subagent primitives for exploration, investigation, or support work, so long as those do not become first-class Q9 workers in the manager hierarchy
 
 ## Acceptance Criteria
 
@@ -255,9 +300,11 @@ This feature is successful when:
 1. A human can treat the manager as the default project interface.
 2. A project has one obvious managerial control plane.
 3. Workers can execute in the background without forcing human micromanagement.
-4. The sacred log provides durable managerial continuity.
-5. Manager and worker roles are clearly different in both behavior and UI.
-6. The UI makes the system feel more organized, not more complicated.
+4. Worker completion or blockage is surfaced back to the manager automatically.
+5. The sacred log provides durable managerial continuity.
+6. Manager and worker roles are clearly different in both behavior and UI.
+7. The UI makes the system feel more organized, not more complicated.
+8. The human can understand what is going on at a glance.
 
 ## Implementation Guidance
 
