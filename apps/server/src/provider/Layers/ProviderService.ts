@@ -12,13 +12,15 @@
 import {
   ModelSelection,
   NonNegativeInt,
-  ThreadId,
   ProviderInterruptTurnInput,
+  ProviderListSkillsInput,
   ProviderRespondToRequestInput,
   ProviderRespondToUserInputInput,
+  ProviderSkillDescriptor,
   ProviderSendTurnInput,
   ProviderSessionStartInput,
   ProviderStopSessionInput,
+  ThreadId,
   type ProviderRuntimeEvent,
   type ProviderSession,
 } from "@t3tools/contracts";
@@ -690,6 +692,25 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     );
   });
 
+  const listSkills: ProviderServiceShape["listSkills"] = Effect.fn("listSkills")(
+    function* (rawInput) {
+      const input = yield* decodeInputOrValidationError({
+        operation: "ProviderService.listSkills",
+        schema: ProviderListSkillsInput,
+        payload: rawInput,
+      });
+      const adapter = yield* registry.getByProvider(input.provider);
+      if (!adapter.listSkills) {
+        return {
+          skills: [] satisfies ProviderSkillDescriptor[],
+          source: "unsupported",
+          cached: false,
+        };
+      }
+      return yield* adapter.listSkills(input);
+    },
+  );
+
   const runStopAll = Effect.fn("runStopAll")(function* () {
     const threadIds = yield* directory.listThreadIds();
     const activeSessions = yield* Effect.forEach(adapters, (adapter) =>
@@ -733,6 +754,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   return {
     startSession,
     sendTurn,
+    listSkills,
     interruptTurn,
     respondToRequest,
     respondToUserInput,

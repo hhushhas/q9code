@@ -50,6 +50,12 @@ import { ensureNativeApi, readNativeApi } from "../../nativeApi";
 import { useStore } from "../../store";
 import { formatRelativeTime, formatRelativeTimeLabel } from "../../timestampFormat";
 import { cn } from "../../lib/utils";
+import {
+  buildNotificationSettingsSupportText,
+  readBrowserNotificationPermissionState,
+  requestBrowserNotificationPermission,
+  type BrowserNotificationPermissionState,
+} from "../../notifications/taskCompletion";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsibleContent } from "../ui/collapsible";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
@@ -453,6 +459,14 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.diffWordWrap !== DEFAULT_UNIFIED_SETTINGS.diffWordWrap
         ? ["Diff line wrapping"]
         : []),
+      ...(settings.enableTaskCompletionToasts !==
+      DEFAULT_UNIFIED_SETTINGS.enableTaskCompletionToasts
+        ? ["Task completion toasts"]
+        : []),
+      ...(settings.enableSystemTaskCompletionNotifications !==
+      DEFAULT_UNIFIED_SETTINGS.enableSystemTaskCompletionNotifications
+        ? ["System task notifications"]
+        : []),
       ...(settings.enableAssistantStreaming !== DEFAULT_UNIFIED_SETTINGS.enableAssistantStreaming
         ? ["Assistant output"]
         : []),
@@ -476,6 +490,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.defaultThreadEnvMode,
       settings.diffWordWrap,
       settings.enableAssistantStreaming,
+      settings.enableSystemTaskCompletionNotifications,
+      settings.enableTaskCompletionToasts,
       settings.timestampFormat,
       theme,
     ],
@@ -535,6 +551,8 @@ export function GeneralSettingsPanel() {
     Partial<Record<ProviderKind, string | null>>
   >({});
   const [isRefreshingProviders, setIsRefreshingProviders] = useState(false);
+  const [browserNotificationPermissionState, setBrowserNotificationPermissionState] =
+    useState<BrowserNotificationPermissionState>(() => readBrowserNotificationPermissionState());
   const refreshingRef = useRef(false);
   const modelListRefs = useRef<Partial<Record<ProviderKind, HTMLDivElement | null>>>({});
   const refreshProviders = useCallback(() => {
@@ -619,6 +637,40 @@ export function GeneralSettingsPanel() {
   const openKeybindingsFile = useCallback(() => {
     openInPreferredEditor("keybindings", keybindingsConfigPath, "Unable to open keybindings file.");
   }, [keybindingsConfigPath, openInPreferredEditor]);
+
+  useEffect(() => {
+    setBrowserNotificationPermissionState(readBrowserNotificationPermissionState());
+  }, []);
+
+  const handleSystemTaskNotificationsChange = useCallback(
+    async (checked: boolean) => {
+      if (!checked) {
+        updateSettings({ enableSystemTaskCompletionNotifications: false });
+        setBrowserNotificationPermissionState(readBrowserNotificationPermissionState());
+        return;
+      }
+
+      if (window.desktopBridge) {
+        updateSettings({ enableSystemTaskCompletionNotifications: true });
+        return;
+      }
+
+      const permissionState = await requestBrowserNotificationPermission();
+      setBrowserNotificationPermissionState(permissionState);
+      if (permissionState === "granted") {
+        updateSettings({ enableSystemTaskCompletionNotifications: true });
+        return;
+      }
+
+      updateSettings({ enableSystemTaskCompletionNotifications: false });
+      toastManager.add({
+        type: "warning",
+        title: "System notifications unavailable",
+        description: buildNotificationSettingsSupportText(permissionState),
+      });
+    },
+    [updateSettings],
+  );
 
   const openLogsDirectory = useCallback(() => {
     openInPreferredEditor("logsDirectory", logsDirectoryPath, "Unable to open logs folder.");
@@ -888,6 +940,61 @@ export function GeneralSettingsPanel() {
                 updateSettings({ enableAssistantStreaming: Boolean(checked) })
               }
               aria-label="Stream assistant messages"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="Task completion toasts"
+          description="Show an in-app toast when a background thread finishes working."
+          resetAction={
+            settings.enableTaskCompletionToasts !==
+            DEFAULT_UNIFIED_SETTINGS.enableTaskCompletionToasts ? (
+              <SettingResetButton
+                label="task completion toasts"
+                onClick={() =>
+                  updateSettings({
+                    enableTaskCompletionToasts: DEFAULT_UNIFIED_SETTINGS.enableTaskCompletionToasts,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.enableTaskCompletionToasts}
+              onCheckedChange={(checked) =>
+                updateSettings({ enableTaskCompletionToasts: Boolean(checked) })
+              }
+              aria-label="Show task completion toasts"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="System task notifications"
+          description="Send a desktop or browser notification when work completes in the background."
+          status={buildNotificationSettingsSupportText(browserNotificationPermissionState)}
+          resetAction={
+            settings.enableSystemTaskCompletionNotifications !==
+            DEFAULT_UNIFIED_SETTINGS.enableSystemTaskCompletionNotifications ? (
+              <SettingResetButton
+                label="system task notifications"
+                onClick={() =>
+                  void handleSystemTaskNotificationsChange(
+                    DEFAULT_UNIFIED_SETTINGS.enableSystemTaskCompletionNotifications,
+                  )
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.enableSystemTaskCompletionNotifications}
+              onCheckedChange={(checked) =>
+                void handleSystemTaskNotificationsChange(Boolean(checked))
+              }
+              aria-label="Enable system task completion notifications"
             />
           }
         />

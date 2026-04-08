@@ -11,6 +11,8 @@ import {
   type ProviderApprovalDecision,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
+  type ProviderSkillDescriptor,
+  type ProviderSkillReference,
   type ServerProvider,
   type ThreadId,
   type TurnId,
@@ -29,6 +31,7 @@ import { useDebouncedValue } from "@tanstack/react-pacer";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { gitStatusQueryOptions } from "~/lib/gitReactQuery";
 import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
+import { providerSkillsQueryOptions } from "~/lib/providerReactQuery";
 import { isElectron } from "../env";
 import { parseDiffRouteSearch, stripDiffSearchParams } from "../diffRouteSearch";
 import {
@@ -157,6 +160,7 @@ import { ContextWindowMeter } from "./chat/ContextWindowMeter";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { AVAILABLE_PROVIDER_OPTIONS, ProviderModelPicker } from "./chat/ProviderModelPicker";
 import { ComposerCommandItem, ComposerCommandMenu } from "./chat/ComposerCommandMenu";
+import { formatComposerSkillChipLabel } from "./composerInlineChip";
 import { ComposerPendingApprovalActions } from "./chat/ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./chat/CompactComposerControlsMenu";
 import { ComposerPrimaryActions } from "./chat/ComposerPrimaryActions";
@@ -205,6 +209,7 @@ const IMAGE_ONLY_BOOTSTRAP_PROMPT =
   "[User attached one or more images without additional text. Respond using the conversation context and the attached image(s).]";
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROJECT_ENTRIES: ProjectEntry[] = [];
+const EMPTY_PROVIDER_SKILLS: ProviderSkillDescriptor[] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
 
@@ -299,6 +304,24 @@ function formatOutgoingPrompt(params: {
 const COMPOSER_PATH_QUERY_DEBOUNCE_MS = 120;
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function skillMentionPrefix(provider: ProviderKind): "$" | "/" {
+  return provider === "claudeAgent" ? "/" : "$";
+}
+
+function promptIncludesSkillMention(
+  prompt: string,
+  skillName: string,
+  provider: ProviderKind,
+): boolean {
+  const prefix = escapeRegExp(skillMentionPrefix(provider));
+  const pattern = new RegExp(`(^|\\s)${prefix}${escapeRegExp(skillName)}(?=\\s|$)`, "i");
+  return pattern.test(prompt);
+}
 
 const extendReplacementRangeForTrailingSpace = (
   text: string,
@@ -680,6 +703,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0);
   const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null);
+  const [selectedComposerSkills, setSelectedComposerSkills] = useState<ProviderSkillReference[]>(
+    [],
+  );
   const [pullRequestDialogState, setPullRequestDialogState] =
     useState<PullRequestDialogState | null>(null);
   const [terminalLaunchContext, setTerminalLaunchContext] = useState<TerminalLaunchContext | null>(
@@ -1392,7 +1418,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
     : null;
   const composerTriggerKind = composerTrigger?.kind ?? null;
   const pathTriggerQuery = composerTrigger?.kind === "path" ? composerTrigger.query : "";
+  const skillTriggerQuery = composerTrigger?.kind === "skill" ? composerTrigger.query : "";
   const isPathTrigger = composerTriggerKind === "path";
+  const isSkillTrigger = composerTriggerKind === "skill";
   const [debouncedPathQuery, composerPathQueryDebouncer] = useDebouncedValue(
     pathTriggerQuery,
     { wait: COMPOSER_PATH_QUERY_DEBOUNCE_MS },
@@ -1441,7 +1469,16 @@ export default function ChatView({ threadId }: ChatViewProps) {
       limit: 80,
     }),
   );
+  const providerSkillsQuery = useQuery(
+    providerSkillsQueryOptions({
+      provider: selectedProvider,
+      cwd: gitCwd,
+      threadId,
+      enabled: isSkillTrigger && selectedProvider === "codex" && gitCwd !== null,
+    }),
+  );
   const workspaceEntries = workspaceEntriesQuery.data?.entries ?? EMPTY_PROJECT_ENTRIES;
+  const providerSkills = providerSkillsQuery.data?.skills ?? EMPTY_PROVIDER_SKILLS;
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return [];
     if (composerTrigger.kind === "path") {
@@ -1488,6 +1525,30 @@ export default function ChatView({ threadId }: ChatViewProps) {
       );
     }
 
+    if (composerTrigger.kind === "skill") {
+      const query = skillTriggerQuery.trim().toLowerCase();
+      return providerSkills
+        .filter((skill) => {
+          if (!query) return true;
+          const displayName = skill.interface?.displayName?.toLowerCase() ?? "";
+          const shortDescription = skill.interface?.shortDescription?.toLowerCase() ?? "";
+          const description = skill.description?.toLowerCase() ?? "";
+          return (
+            skill.name.toLowerCase().includes(query) ||
+            displayName.includes(query) ||
+            shortDescription.includes(query) ||
+            description.includes(query)
+          );
+        })
+        .map((skill) => ({
+          id: `skill:${skill.name}:${skill.path}`,
+          type: "skill",
+          skill,
+          label: skill.interface?.displayName ?? formatComposerSkillChipLabel(skill.name),
+          description: skill.interface?.shortDescription ?? skill.description ?? skill.path,
+        }));
+    }
+
     return searchableModelOptions
       .filter(({ searchSlug, searchName, searchProvider }) => {
         const query = composerTrigger.query.trim().toLowerCase();
@@ -1504,7 +1565,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
         label: name,
         description: `${providerLabel} · ${slug}`,
       }));
-  }, [composerTrigger, searchableModelOptions, workspaceEntries]);
+  }, [
+    composerTrigger,
+    providerSkills,
+    searchableModelOptions,
+    skillTriggerQuery,
+    workspaceEntries,
+  ]);
   const composerMenuOpen = Boolean(composerTrigger);
   const activeComposerMenuItem = useMemo(
     () =>
@@ -2378,6 +2445,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
   }, [prompt]);
 
   useEffect(() => {
+    setSelectedComposerSkills([]);
+  }, [selectedProvider]);
+
+  useEffect(() => {
     setOptimisticUserMessages((existing) => {
       for (const message of existing) {
         revokeUserMessagePreviewUrls(message);
@@ -2946,6 +3017,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
       effort: selectedPromptEffort,
       text: messageTextForSend || IMAGE_ONLY_BOOTSTRAP_PROMPT,
     });
+    const mentionedSkillsForSend = selectedComposerSkills.filter((skill) =>
+      promptIncludesSkillMention(outgoingMessageText, skill.name, selectedProvider),
+    );
     const turnAttachmentsPromise = Promise.all(
       composerImagesSnapshot.map(async (image) => ({
         type: "image" as const,
@@ -3085,6 +3159,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           role: "user",
           text: outgoingMessageText,
           attachments: turnAttachments,
+          ...(mentionedSkillsForSend.length > 0 ? { skills: mentionedSkillsForSend } : {}),
         },
         modelSelection: selectedModelSelection,
         titleSeed: title,
@@ -3320,6 +3395,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
         effort: selectedPromptEffort,
         text: trimmed,
       });
+      const mentionedSkillsForSend = selectedComposerSkills.filter((skill) =>
+        promptIncludesSkillMention(outgoingMessageText, skill.name, selectedProvider),
+      );
 
       sendInFlightRef.current = true;
       beginLocalDispatch({ preparingWorktree: false });
@@ -3359,6 +3437,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
             role: "user",
             text: outgoingMessageText,
             attachments: [],
+            ...(mentionedSkillsForSend.length > 0 ? { skills: mentionedSkillsForSend } : {}),
           },
           modelSelection: selectedModelSelection,
           titleSeed: activeThread.title,
@@ -3406,6 +3485,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       resetLocalDispatch,
       runtimeMode,
       selectedPromptEffort,
+      selectedComposerSkills,
       selectedModelSelection,
       selectedProvider,
       selectedProviderModels,
@@ -3738,6 +3818,35 @@ export default function ChatView({ threadId }: ChatViewProps) {
         }
         return;
       }
+      if (item.type === "skill") {
+        const replacement = `${skillMentionPrefix(selectedProvider)}${item.skill.name} `;
+        const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
+          snapshot.value,
+          trigger.rangeEnd,
+          replacement,
+        );
+        const applied = applyPromptReplacement(
+          trigger.rangeStart,
+          replacementRangeEnd,
+          replacement,
+          { expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd) },
+        );
+        if (applied) {
+          setSelectedComposerSkills((existing) => {
+            const nextSkill = {
+              name: item.skill.name,
+              path: item.skill.path,
+            } satisfies ProviderSkillReference;
+            return existing.some(
+              (skill) => skill.name === nextSkill.name && skill.path === nextSkill.path,
+            )
+              ? existing
+              : [...existing, nextSkill];
+          });
+          setComposerHighlightedItemId(null);
+        }
+        return;
+      }
       onProviderModelSelect(item.provider, item.model);
       const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
         expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
@@ -3751,6 +3860,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       handleInteractionModeChange,
       onProviderModelSelect,
       resolveActiveComposerTrigger,
+      selectedProvider,
     ],
   );
   const onComposerMenuItemHighlighted = useCallback((itemId: string | null) => {
@@ -3775,10 +3885,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
     [composerHighlightedItemId, composerMenuItems],
   );
   const isComposerMenuLoading =
-    composerTriggerKind === "path" &&
-    ((pathTriggerQuery.length > 0 && composerPathQueryDebouncer.state.isPending) ||
-      workspaceEntriesQuery.isLoading ||
-      workspaceEntriesQuery.isFetching);
+    (composerTriggerKind === "path" &&
+      ((pathTriggerQuery.length > 0 && composerPathQueryDebouncer.state.isPending) ||
+        workspaceEntriesQuery.isLoading ||
+        workspaceEntriesQuery.isFetching)) ||
+    (composerTriggerKind === "skill" &&
+      (providerSkillsQuery.isLoading || providerSkillsQuery.isFetching));
 
   const onPromptChange = useCallback(
     (

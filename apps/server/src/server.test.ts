@@ -60,6 +60,7 @@ import {
   ProviderRegistry,
   type ProviderRegistryShape,
 } from "./provider/Services/ProviderRegistry.ts";
+import { ProviderService, type ProviderServiceShape } from "./provider/Services/ProviderService.ts";
 import { ServerLifecycleEvents, type ServerLifecycleEventsShape } from "./serverLifecycleEvents.ts";
 import { ServerRuntimeStartup, type ServerRuntimeStartupShape } from "./serverRuntimeStartup.ts";
 import { ServerSettingsService, type ServerSettingsShape } from "./serverSettings.ts";
@@ -248,6 +249,7 @@ const buildAppUnderTest = (options?: {
   layers?: {
     keybindings?: Partial<KeybindingsShape>;
     providerRegistry?: Partial<ProviderRegistryShape>;
+    providerService?: Partial<ProviderServiceShape>;
     serverSettings?: Partial<ServerSettingsShape>;
     open?: Partial<OpenShape>;
     gitCore?: Partial<GitCoreShape>;
@@ -311,6 +313,25 @@ const buildAppUnderTest = (options?: {
           refresh: () => Effect.succeed([]),
           streamChanges: Stream.empty,
           ...options?.layers?.providerRegistry,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(ProviderService)({
+          startSession: () => Effect.die(new Error("ProviderService.startSession not mocked")),
+          sendTurn: () => Effect.die(new Error("ProviderService.sendTurn not mocked")),
+          listSkills: () => Effect.succeed({ skills: [], source: "unsupported", cached: false }),
+          interruptTurn: () => Effect.die(new Error("ProviderService.interruptTurn not mocked")),
+          respondToRequest: () =>
+            Effect.die(new Error("ProviderService.respondToRequest not mocked")),
+          respondToUserInput: () =>
+            Effect.die(new Error("ProviderService.respondToUserInput not mocked")),
+          stopSession: () => Effect.die(new Error("ProviderService.stopSession not mocked")),
+          listSessions: () => Effect.succeed([]),
+          getCapabilities: () => Effect.succeed({ sessionModelSwitch: "unsupported" as const }),
+          rollbackConversation: () =>
+            Effect.die(new Error("ProviderService.rollbackConversation not mocked")),
+          streamEvents: Stream.empty,
+          ...options?.layers?.providerService,
         }),
       ),
       Layer.provide(

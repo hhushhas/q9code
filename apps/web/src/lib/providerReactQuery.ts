@@ -1,6 +1,8 @@
 import {
   OrchestrationGetFullThreadDiffInput,
   OrchestrationGetTurnDiffInput,
+  type ProviderKind,
+  type ProviderListSkillsResult,
   ThreadId,
 } from "@t3tools/contracts";
 import { queryOptions } from "@tanstack/react-query";
@@ -15,8 +17,25 @@ interface CheckpointDiffQueryInput {
   enabled?: boolean;
 }
 
+interface ProviderSkillsQueryInput {
+  provider: ProviderKind;
+  cwd: string | null;
+  threadId: ThreadId | null;
+  enabled?: boolean;
+  forceReload?: boolean;
+}
+
 export const providerQueryKeys = {
   all: ["providers"] as const,
+  listSkills: (input: ProviderSkillsQueryInput) =>
+    [
+      "providers",
+      "skills",
+      input.provider,
+      input.cwd ?? null,
+      input.threadId ?? null,
+      input.forceReload === true,
+    ] as const,
   checkpointDiff: (input: CheckpointDiffQueryInput) =>
     [
       "providers",
@@ -120,5 +139,24 @@ export function checkpointDiffQueryOptions(input: CheckpointDiffQueryInput) {
       isCheckpointTemporarilyUnavailable(error)
         ? Math.min(5_000, 250 * 2 ** (attempt - 1))
         : Math.min(1_000, 100 * 2 ** (attempt - 1)),
+  });
+}
+
+export function providerSkillsQueryOptions(input: ProviderSkillsQueryInput) {
+  return queryOptions({
+    queryKey: providerQueryKeys.listSkills(input),
+    queryFn: async (): Promise<ProviderListSkillsResult> => {
+      if (!input.cwd) {
+        throw new Error("Skill discovery is unavailable without a workspace.");
+      }
+      return ensureNativeApi().provider.listSkills({
+        provider: input.provider,
+        cwd: input.cwd,
+        ...(input.threadId ? { threadId: input.threadId } : {}),
+        ...(input.forceReload !== undefined ? { forceReload: input.forceReload } : {}),
+      });
+    },
+    enabled: (input.enabled ?? true) && Boolean(input.cwd),
+    staleTime: 60_000,
   });
 }

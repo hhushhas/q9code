@@ -49,6 +49,9 @@ const rpcClientMock = {
     searchEntries: vi.fn(),
     writeFile: vi.fn(),
   },
+  provider: {
+    listSkills: vi.fn(),
+  },
   shell: {
     openInEditor: vi.fn(),
   },
@@ -135,6 +138,10 @@ function makeDesktopBridge(overrides: Partial<DesktopBridge> = {}): DesktopBridg
       throw new Error("installUpdate not implemented in test");
     },
     onUpdateState: () => () => undefined,
+    notifications: {
+      isSupported: async () => true,
+      show: async () => true,
+    },
     ...overrides,
   };
 }

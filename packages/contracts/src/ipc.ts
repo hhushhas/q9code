@@ -16,6 +16,7 @@ import type {
   GitStatusInput,
   GitStatusResult,
 } from "./git";
+import type { ProviderListSkillsInput, ProviderListSkillsResult } from "./providerDiscovery";
 import type {
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
@@ -119,6 +120,10 @@ export interface DesktopBridge {
   downloadUpdate: () => Promise<DesktopUpdateActionResult>;
   installUpdate: () => Promise<DesktopUpdateActionResult>;
   onUpdateState: (listener: (state: DesktopUpdateState) => void) => () => void;
+  notifications: {
+    isSupported: () => Promise<boolean>;
+    show: (input: { title: string; body?: string; silent?: boolean }) => Promise<boolean>;
+  };
 }
 
 export interface NativeApi {
@@ -138,6 +143,9 @@ export interface NativeApi {
   projects: {
     searchEntries: (input: ProjectSearchEntriesInput) => Promise<ProjectSearchEntriesResult>;
     writeFile: (input: ProjectWriteFileInput) => Promise<ProjectWriteFileResult>;
+  };
+  provider: {
+    listSkills: (input: ProviderListSkillsInput) => Promise<ProviderListSkillsResult>;
   };
   shell: {
     openInEditor: (cwd: string, editor: EditorId) => Promise<void>;

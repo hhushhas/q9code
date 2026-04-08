@@ -24,6 +24,18 @@ describe("detectComposerTrigger", () => {
     });
   });
 
+  it("detects $skill trigger at cursor", () => {
+    const text = "Use $check";
+    const trigger = detectComposerTrigger(text, text.length);
+
+    expect(trigger).toEqual({
+      kind: "skill",
+      query: "check",
+      rangeStart: "Use ".length,
+      rangeEnd: text.length,
+    });
+  });
+
   it("detects slash command token while typing command name", () => {
     const text = "/mo";
     const trigger = detectComposerTrigger(text, text.length);
@@ -126,6 +138,16 @@ describe("expandCollapsedComposerCursor", () => {
     );
   });
 
+  it("maps collapsed skill cursor to expanded text cursor", () => {
+    const text = "use $check-code please";
+    const collapsedCursorAfterSkill = "use ".length + 2;
+    const expandedCursorAfterSkill = "use $check-code ".length;
+
+    expect(expandCollapsedComposerCursor(text, collapsedCursorAfterSkill)).toBe(
+      expandedCursorAfterSkill,
+    );
+  });
+
   it("allows path trigger detection to close after selecting a mention", () => {
     const text = "what's in my @AGENTS.md ";
     const collapsedCursorAfterMention = "what's in my ".length + 2;
@@ -147,6 +169,16 @@ describe("collapseExpandedComposerCursor", () => {
 
     expect(collapseExpandedComposerCursor(text, expandedCursorAfterMention)).toBe(
       collapsedCursorAfterMention,
+    );
+  });
+
+  it("maps expanded skill cursor back to collapsed cursor", () => {
+    const text = "use $check-code please";
+    const collapsedCursorAfterSkill = "use ".length + 2;
+    const expandedCursorAfterSkill = "use $check-code ".length;
+
+    expect(collapseExpandedComposerCursor(text, expandedCursorAfterSkill)).toBe(
+      collapsedCursorAfterSkill,
     );
   });
 

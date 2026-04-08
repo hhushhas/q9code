@@ -10,7 +10,9 @@ import {
   type CanonicalItemType,
   type CanonicalRequestType,
   type ProviderEvent,
+  type ProviderListSkillsInput,
   type ProviderRuntimeEvent,
+  type ProviderSkillReference,
   type ThreadTokenUsageSnapshot,
   type ProviderUserInputAnswers,
   RuntimeItemId,
@@ -1490,6 +1492,16 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
             ? { interactionMode: input.interactionMode }
             : {}),
           ...(codexAttachments.length > 0 ? { attachments: codexAttachments } : {}),
+          ...(input.skills && input.skills.length > 0
+            ? {
+                skills: input.skills.map(
+                  (skill): ProviderSkillReference => ({
+                    name: skill.name,
+                    path: skill.path,
+                  }),
+                ),
+              }
+            : {}),
         };
         return manager.sendTurn(managerInput);
       },
@@ -1501,6 +1513,43 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       })),
     );
   });
+
+  const listSkills: NonNullable<CodexAdapterShape["listSkills"]> = (
+    input: ProviderListSkillsInput,
+  ) =>
+    Effect.gen(function* () {
+      const settings = yield* serverSettingsService.getSettings;
+      return yield* Effect.tryPromise({
+        try: () =>
+          manager.listSkills({
+            cwd: input.cwd,
+            ...(input.threadId ? { threadId: input.threadId } : {}),
+            ...(input.forceReload !== undefined ? { forceReload: input.forceReload } : {}),
+            binaryPath: settings.providers.codex.binaryPath,
+            ...(settings.providers.codex.homePath
+              ? { homePath: settings.providers.codex.homePath }
+              : {}),
+          }),
+        catch: (cause) =>
+          new ProviderAdapterRequestError({
+            provider: PROVIDER,
+            method: "skills/list",
+            detail: toMessage(cause, "skills/list failed"),
+            cause,
+          }),
+      });
+    }).pipe(
+      Effect.mapError((cause) =>
+        Schema.is(ProviderAdapterRequestError)(cause)
+          ? cause
+          : new ProviderAdapterRequestError({
+              provider: PROVIDER,
+              method: "skills/list",
+              detail: toMessage(cause, "skills/list failed"),
+              cause,
+            }),
+      ),
+    );
 
   const interruptTurn: CodexAdapterShape["interruptTurn"] = (threadId, turnId) =>
     Effect.tryPromise({
@@ -1622,6 +1671,7 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     },
     startSession,
     sendTurn,
+    listSkills,
     interruptTurn,
     readThread,
     rollbackThread,

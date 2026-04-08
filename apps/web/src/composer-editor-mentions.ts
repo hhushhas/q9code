@@ -13,11 +13,16 @@ export type ComposerPromptSegment =
       path: string;
     }
   | {
+      type: "skill";
+      name: string;
+    }
+  | {
       type: "terminal-context";
       context: TerminalContextDraft | null;
     };
 
 const MENTION_TOKEN_REGEX = /(^|\s)@([^\s@]+)(?=\s)/g;
+const SKILL_TOKEN_REGEX = /(^|\s)\$([a-zA-Z][a-zA-Z0-9_:-]*)(?=\s)/g;
 
 function pushTextSegment(segments: ComposerPromptSegment[], text: string): void {
   if (!text) return;
@@ -35,26 +40,44 @@ function splitPromptTextIntoComposerSegments(text: string): ComposerPromptSegmen
     return segments;
   }
 
+  const tokenMatches = [
+    ...Array.from(text.matchAll(MENTION_TOKEN_REGEX), (match) => ({
+      type: "mention" as const,
+      match,
+    })),
+    ...Array.from(text.matchAll(SKILL_TOKEN_REGEX), (match) => ({
+      type: "skill" as const,
+      match,
+    })),
+  ].toSorted((left, right) => (left.match.index ?? 0) - (right.match.index ?? 0));
+
   let cursor = 0;
-  for (const match of text.matchAll(MENTION_TOKEN_REGEX)) {
+  for (const tokenMatch of tokenMatches) {
+    const match = tokenMatch.match;
     const fullMatch = match[0];
     const prefix = match[1] ?? "";
-    const path = match[2] ?? "";
+    const tokenValue = match[2] ?? "";
     const matchIndex = match.index ?? 0;
-    const mentionStart = matchIndex + prefix.length;
-    const mentionEnd = mentionStart + fullMatch.length - prefix.length;
+    const tokenStart = matchIndex + prefix.length;
+    const tokenEnd = tokenStart + fullMatch.length - prefix.length;
 
-    if (mentionStart > cursor) {
-      pushTextSegment(segments, text.slice(cursor, mentionStart));
+    if (tokenStart < cursor) {
+      continue;
     }
 
-    if (path.length > 0) {
-      segments.push({ type: "mention", path });
+    if (tokenStart > cursor) {
+      pushTextSegment(segments, text.slice(cursor, tokenStart));
+    }
+
+    if (tokenValue.length > 0 && tokenMatch.type === "mention") {
+      segments.push({ type: "mention", path: tokenValue });
+    } else if (tokenValue.length > 0 && tokenMatch.type === "skill") {
+      segments.push({ type: "skill", name: tokenValue });
     } else {
-      pushTextSegment(segments, text.slice(mentionStart, mentionEnd));
+      pushTextSegment(segments, text.slice(tokenStart, tokenEnd));
     }
 
-    cursor = mentionEnd;
+    cursor = tokenEnd;
   }
 
   if (cursor < text.length) {

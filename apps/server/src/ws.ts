@@ -38,6 +38,7 @@ import {
   observeRpcStreamEffect,
 } from "./observability/RpcInstrumentation";
 import { ProviderRegistry } from "./provider/Services/ProviderRegistry";
+import { ProviderService } from "./provider/Services/ProviderService";
 import { ServerLifecycleEvents } from "./serverLifecycleEvents";
 import { ServerRuntimeStartup } from "./serverRuntimeStartup";
 import { ServerSettingsService } from "./serverSettings";
@@ -58,6 +59,7 @@ const WsRpcLayer = WsRpcGroup.toLayer(
     const git = yield* GitCore;
     const terminalManager = yield* TerminalManager;
     const providerRegistry = yield* ProviderRegistry;
+    const providerService = yield* ProviderService;
     const config = yield* ServerConfig;
     const lifecycleEvents = yield* ServerLifecycleEvents;
     const serverSettings = yield* ServerSettingsService;
@@ -525,6 +527,29 @@ const WsRpcLayer = WsRpcGroup.toLayer(
         observeRpcEffect(WS_METHODS.serverUpdateSettings, serverSettings.updateSettings(patch), {
           "rpc.aggregate": "server",
         }),
+      [WS_METHODS.providerListSkills]: (input) =>
+        observeRpcEffect(
+          WS_METHODS.providerListSkills,
+          providerService.listSkills(input).pipe(
+            Effect.tapError((error) =>
+              Effect.logWarning("provider.listSkills failed; returning empty skill list", {
+                provider: input.provider,
+                cwd: input.cwd,
+                detail: error.message,
+              }),
+            ),
+            Effect.catch(() =>
+              Effect.succeed({
+                skills: [],
+                source: "error",
+                cached: false,
+              }),
+            ),
+          ),
+          {
+            "rpc.aggregate": "provider",
+          },
+        ),
       [WS_METHODS.projectsSearchEntries]: (input) =>
         observeRpcEffect(
           WS_METHODS.projectsSearchEntries,

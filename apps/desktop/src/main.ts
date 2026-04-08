@@ -12,6 +12,7 @@ import {
   Menu,
   nativeImage,
   nativeTheme,
+  Notification,
   protocol,
   shell,
 } from "electron";
@@ -61,6 +62,8 @@ const UPDATE_DOWNLOAD_CHANNEL = "desktop:update-download";
 const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
 const UPDATE_CHECK_CHANNEL = "desktop:update-check";
 const GET_WS_URL_CHANNEL = "desktop:get-ws-url";
+const NOTIFICATIONS_IS_SUPPORTED_CHANNEL = "desktop:notifications-is-supported";
+const NOTIFICATIONS_SHOW_CHANNEL = "desktop:notifications-show";
 const BASE_DIR = resolveDesktopBaseDir({ env: process.env, homedir: OS.homedir() });
 const STATE_DIR = Path.join(BASE_DIR, "userdata");
 const DESKTOP_SCHEME = "t3";
@@ -557,6 +560,42 @@ function dispatchMenuAction(action: string): void {
   }
 
   send();
+}
+
+function showDesktopNotification(input: {
+  title: string;
+  body?: string;
+  silent?: boolean;
+}): boolean {
+  const title = typeof input.title === "string" ? input.title.trim() : "";
+  const body = typeof input.body === "string" ? input.body.trim() : "";
+  if (title.length === 0 || !Notification.isSupported()) {
+    return false;
+  }
+
+  const iconPath = resolveIconPath("png");
+  const notification = new Notification({
+    title,
+    body,
+    silent: input.silent === true,
+    ...(iconPath ? { icon: iconPath } : {}),
+  });
+
+  notification.on("click", () => {
+    if (!mainWindow) {
+      return;
+    }
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore();
+    }
+    if (!mainWindow.isVisible()) {
+      mainWindow.show();
+    }
+    mainWindow.focus();
+  });
+
+  notification.show();
+  return true;
 }
 
 function handleCheckForUpdatesMenuClick(): void {
@@ -1285,6 +1324,22 @@ function registerIpcHandlers(): void {
     } catch {
       return false;
     }
+  });
+
+  ipcMain.removeHandler(NOTIFICATIONS_IS_SUPPORTED_CHANNEL);
+  ipcMain.handle(NOTIFICATIONS_IS_SUPPORTED_CHANNEL, async () => Notification.isSupported());
+
+  ipcMain.removeHandler(NOTIFICATIONS_SHOW_CHANNEL);
+  ipcMain.handle(NOTIFICATIONS_SHOW_CHANNEL, async (_event, input: unknown) => {
+    if (!input || typeof input !== "object") {
+      return false;
+    }
+    const payload = input as { title?: unknown; body?: unknown; silent?: unknown };
+    return showDesktopNotification({
+      title: typeof payload.title === "string" ? payload.title : "",
+      ...(typeof payload.body === "string" ? { body: payload.body } : {}),
+      ...(typeof payload.silent === "boolean" ? { silent: payload.silent } : {}),
+    });
   });
 
   ipcMain.removeHandler(UPDATE_GET_STATE_CHANNEL);

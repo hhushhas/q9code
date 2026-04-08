@@ -18,6 +18,14 @@ describe("splitPromptIntoComposerSegments", () => {
     ]);
   });
 
+  it("splits skill tokens followed by whitespace into skill segments", () => {
+    expect(splitPromptIntoComposerSegments("Run $check-code please")).toEqual([
+      { type: "text", text: "Run " },
+      { type: "skill", name: "check-code" },
+      { type: "text", text: " please" },
+    ]);
+  });
+
   it("keeps newlines around mention tokens", () => {
     expect(splitPromptIntoComposerSegments("one\n@src/index.ts \ntwo")).toEqual([
       { type: "text", text: "one\n" },
@@ -29,12 +37,12 @@ describe("splitPromptIntoComposerSegments", () => {
   it("keeps inline terminal context placeholders at their prompt positions", () => {
     expect(
       splitPromptIntoComposerSegments(
-        `Inspect ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER}@AGENTS.md please`,
+        `Inspect ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER}$check-code please`,
       ),
     ).toEqual([
       { type: "text", text: "Inspect " },
       { type: "terminal-context", context: null },
-      { type: "mention", path: "AGENTS.md" },
+      { type: "skill", name: "check-code" },
       { type: "text", text: " please" },
     ]);
   });

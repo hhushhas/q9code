@@ -14,6 +14,8 @@
 import type {
   ProviderInterruptTurnInput,
   ProviderKind,
+  ProviderListSkillsInput,
+  ProviderListSkillsResult,
   ProviderRespondToRequestInput,
   ProviderRespondToUserInputInput,
   ProviderRuntimeEvent,
@@ -48,6 +50,13 @@ export interface ProviderServiceShape {
   readonly sendTurn: (
     input: ProviderSendTurnInput,
   ) => Effect.Effect<ProviderTurnStartResult, ProviderServiceError>;
+
+  /**
+   * List available provider skills for a workspace.
+   */
+  readonly listSkills: (
+    input: ProviderListSkillsInput,
+  ) => Effect.Effect<ProviderListSkillsResult, ProviderServiceError>;
 
   /**
    * Interrupt a running provider turn.

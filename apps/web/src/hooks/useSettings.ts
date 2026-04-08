@@ -34,8 +34,8 @@ import { DeepMutable } from "effect/Types";
 import { deepMerge } from "@t3tools/shared/Struct";
 import { applySettingsUpdated, getServerConfig, useServerSettings } from "~/rpc/serverState";
 
-const CLIENT_SETTINGS_STORAGE_KEY = "t3code:client-settings:v1";
-const OLD_SETTINGS_KEY = "t3code:app-settings:v1";
+const CLIENT_SETTINGS_STORAGE_KEY = "q9code:client-settings:v1";
+const OLD_SETTINGS_KEY = "q9code:app-settings:v1";
 
 // ── Key sets for routing patches ─────────────────────────────────────
 
@@ -204,6 +204,15 @@ export function buildLegacyClientSettingsMigrationPatch(
 
   if (Predicate.isBoolean(legacySettings.diffWordWrap)) {
     patch.diffWordWrap = legacySettings.diffWordWrap;
+  }
+
+  if (Predicate.isBoolean(legacySettings.enableSystemTaskCompletionNotifications)) {
+    patch.enableSystemTaskCompletionNotifications =
+      legacySettings.enableSystemTaskCompletionNotifications;
+  }
+
+  if (Predicate.isBoolean(legacySettings.enableTaskCompletionToasts)) {
+    patch.enableTaskCompletionToasts = legacySettings.enableTaskCompletionToasts;
   }
 
   if (Schema.is(SidebarProjectSortOrder)(legacySettings.sidebarProjectSortOrder)) {

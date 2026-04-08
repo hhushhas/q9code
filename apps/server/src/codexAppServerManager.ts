@@ -6,8 +6,11 @@ import readline from "node:readline";
 import {
   ApprovalRequestId,
   EventId,
+  type ProviderListSkillsResult,
   ProviderItemId,
   ProviderRequestKind,
+  type ProviderSkillDescriptor,
+  type ProviderSkillReference,
   type ProviderUserInputAnswers,
   ThreadId,
   TurnId,
@@ -105,14 +108,36 @@ interface JsonRpcNotification {
   params?: unknown;
 }
 
+function shouldRetrySkillsListWithCwdFallback(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  return (
+    message.includes("skills/list failed") &&
+    (message.includes("invalid") ||
+      message.includes("unknown field") ||
+      message.includes("unrecognized field") ||
+      message.includes("missing field") ||
+      message.includes("expected") ||
+      message.includes("cwds"))
+  );
+}
+
 export interface CodexAppServerSendTurnInput {
   readonly threadId: ThreadId;
   readonly input?: string;
   readonly attachments?: ReadonlyArray<{ type: "image"; url: string }>;
+  readonly skills?: ReadonlyArray<ProviderSkillReference>;
   readonly model?: string;
   readonly serviceTier?: string | null;
   readonly effort?: string;
   readonly interactionMode?: ProviderInteractionMode;
+}
+
+export interface CodexSkillListInput {
+  readonly cwd: string;
+  readonly threadId?: ThreadId;
+  readonly forceReload?: boolean;
+  readonly binaryPath?: string;
+  readonly homePath?: string;
 }
 
 export interface CodexAppServerStartSessionInput {
@@ -431,6 +456,7 @@ export interface CodexAppServerManagerEvents {
 
 export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEvents> {
   private readonly sessions = new Map<ThreadId, CodexSessionContext>();
+  private readonly skillsCache = new Map<string, ProviderListSkillsResult>();
 
   private runPromise: (effect: Effect.Effect<unknown, never>) => Promise<unknown>;
   constructor(services?: ServiceMap.ServiceMap<never>) {
@@ -652,7 +678,9 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     context.collabReceiverTurns.clear();
 
     const turnInput: Array<
-      { type: "text"; text: string; text_elements: [] } | { type: "image"; url: string }
+      | { type: "text"; text: string; text_elements: [] }
+      | { type: "image"; url: string }
+      | { type: "skill"; name: string; path: string }
     > = [];
     if (input.input) {
       turnInput.push({
@@ -669,6 +697,13 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
         });
       }
     }
+    for (const skill of input.skills ?? []) {
+      turnInput.push({
+        type: "skill",
+        name: skill.name,
+        path: skill.path,
+      });
+    }
     if (turnInput.length === 0) {
       throw new Error("Turn input must include text or attachments.");
     }
@@ -684,7 +719,9 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     const turnStartParams: {
       threadId: string;
       input: Array<
-        { type: "text"; text: string; text_elements: [] } | { type: "image"; url: string }
+        | { type: "text"; text: string; text_elements: [] }
+        | { type: "image"; url: string }
+        | { type: "skill"; name: string; path: string }
       >;
       model?: string;
       serviceTier?: string | null;
@@ -750,6 +787,44 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
         ? { resumeCursor: context.session.resumeCursor }
         : {}),
     };
+  }
+
+  async listSkills(input: CodexSkillListInput): Promise<ProviderListSkillsResult> {
+    const cwd = input.cwd.trim();
+    if (cwd.length === 0) {
+      throw new Error("cwd is required to list Codex skills.");
+    }
+
+    const cacheKey = JSON.stringify({
+      cwd,
+      threadId: input.threadId?.trim() || null,
+    });
+    if (!input.forceReload) {
+      const cached = this.skillsCache.get(cacheKey);
+      if (cached) {
+        return {
+          ...cached,
+          cached: true,
+        };
+      }
+    }
+
+    const response =
+      input.threadId && this.sessions.has(input.threadId)
+        ? await this.requestSkillsList(this.requireSession(input.threadId), cwd, input.forceReload)
+        : await this.runDiscoverySkillsList(
+            cwd,
+            input.forceReload,
+            input.binaryPath ?? "codex",
+            input.homePath,
+          );
+    const result: ProviderListSkillsResult = {
+      skills: this.parseSkillsListResponse(response, cwd),
+      source: "codex-app-server",
+      cached: false,
+    };
+    this.skillsCache.set(cacheKey, result);
+    return result;
   }
 
   async interruptTurn(threadId: ThreadId, turnId?: TurnId): Promise<void> {
@@ -1507,6 +1582,148 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
 
     const candidate = (value as Record<string, unknown>)[key];
     return typeof candidate === "boolean" ? candidate : undefined;
+  }
+
+  private async requestSkillsList(
+    context: CodexSessionContext,
+    cwd: string,
+    forceReload?: boolean,
+  ): Promise<Record<string, unknown>> {
+    try {
+      return await this.sendRequest<Record<string, unknown>>(context, "skills/list", {
+        cwds: [cwd],
+        ...(forceReload ? { forceReload: true } : {}),
+      });
+    } catch (error) {
+      if (!shouldRetrySkillsListWithCwdFallback(error)) {
+        throw error;
+      }
+      return this.sendRequest<Record<string, unknown>>(context, "skills/list", {
+        cwd,
+        ...(forceReload ? { forceReload: true } : {}),
+      });
+    }
+  }
+
+  private async runDiscoverySkillsList(
+    cwd: string,
+    forceReload?: boolean,
+    binaryPath = "codex",
+    homePath?: string,
+  ): Promise<Record<string, unknown>> {
+    this.assertSupportedCodexCliVersion({
+      binaryPath,
+      cwd,
+      ...(homePath ? { homePath } : {}),
+    });
+    const child = spawn(binaryPath, ["app-server"], {
+      cwd,
+      env: {
+        ...process.env,
+        ...(homePath ? { CODEX_HOME: homePath } : {}),
+      },
+      stdio: ["pipe", "pipe", "pipe"],
+      shell: process.platform === "win32",
+    });
+    const output = readline.createInterface({ input: child.stdout });
+    const now = new Date().toISOString();
+    const context: CodexSessionContext = {
+      session: {
+        provider: "codex",
+        status: "connecting",
+        runtimeMode: "full-access",
+        cwd,
+        threadId: ThreadId.makeUnsafe(`__codex_discovery__:${cwd}`),
+        createdAt: now,
+        updatedAt: now,
+      },
+      account: {
+        type: "unknown",
+        planType: null,
+        sparkEnabled: true,
+      },
+      child,
+      output,
+      pending: new Map(),
+      pendingApprovals: new Map(),
+      pendingUserInputs: new Map(),
+      collabReceiverTurns: new Map(),
+      nextRequestId: 1,
+      stopping: false,
+    };
+
+    this.attachProcessListeners(context);
+
+    try {
+      await this.sendRequest(context, "initialize", buildCodexInitializeParams());
+      this.writeMessage(context, { method: "initialized" });
+      return await this.requestSkillsList(context, cwd, forceReload);
+    } finally {
+      context.stopping = true;
+      for (const pending of context.pending.values()) {
+        clearTimeout(pending.timeout);
+        pending.reject(new Error("Discovery session stopped before request completed."));
+      }
+      context.pending.clear();
+      output.close();
+      if (!child.killed) {
+        killChildTree(child);
+      }
+    }
+  }
+
+  private parseSkillDescriptor(skill: unknown): ProviderSkillDescriptor | undefined {
+    const record = this.readObject(skill);
+    if (!record) return undefined;
+    const name = this.readString(record, "name")?.trim();
+    const path = this.readString(record, "path")?.trim();
+    if (!name || !path) {
+      return undefined;
+    }
+    const description = this.readString(record, "description")?.trim();
+    const scope = this.readString(record, "scope")?.trim();
+    const display = this.readObject(record, "interface");
+    return {
+      name,
+      path,
+      enabled: record.enabled !== false,
+      ...(description ? { description } : {}),
+      ...(scope ? { scope } : {}),
+      ...(display
+        ? {
+            interface: {
+              ...(this.readString(display, "displayName")
+                ? { displayName: this.readString(display, "displayName") }
+                : {}),
+              ...(this.readString(display, "shortDescription")
+                ? { shortDescription: this.readString(display, "shortDescription") }
+                : {}),
+            },
+          }
+        : {}),
+      ...(record.dependencies !== undefined ? { dependencies: record.dependencies } : {}),
+    };
+  }
+
+  private parseSkillsListResponse(response: unknown, cwd: string): ProviderSkillDescriptor[] {
+    const responseRecord = this.readObject(response);
+    const resultRecord = this.readObject(responseRecord, "result") ?? responseRecord;
+    const dataItems = this.readArray(resultRecord, "data") ?? [];
+    const scopedData = dataItems.find((value) => {
+      const item = this.readObject(value);
+      const itemCwd = this.readString(item, "cwd");
+      return itemCwd === cwd;
+    });
+    const scopedSkills = this.readArray(this.readObject(scopedData), "skills");
+    const directSkills = this.readArray(resultRecord, "skills");
+    const rawSkills = scopedSkills ?? directSkills ?? [];
+
+    return rawSkills
+      .flatMap((skill) => {
+        const parsedSkill = this.parseSkillDescriptor(skill);
+        return parsedSkill ? [parsedSkill] : [];
+      })
+      .toSorted((left, right) => left.name.localeCompare(right.name));
   }
 }
 
