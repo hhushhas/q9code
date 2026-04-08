@@ -1669,6 +1669,55 @@ export default function Sidebar() {
       shouldShowThreadPanel,
       isThreadListExpanded,
     } = renderedProject;
+    const visibleManagerThreadId =
+      managerThreadId && renderedThreadIds.includes(managerThreadId) ? managerThreadId : null;
+    const nestedWorkerThreadIds = visibleManagerThreadId
+      ? renderedThreadIds.filter(
+          (threadId) => sidebarThreadsById[threadId]?.managerThreadId === visibleManagerThreadId,
+        )
+      : [];
+    const topLevelThreadIds = renderedThreadIds.filter((threadId) => {
+      if (threadId === visibleManagerThreadId) {
+        return false;
+      }
+      const thread = sidebarThreadsById[threadId];
+      if (!thread) {
+        return true;
+      }
+      return thread.managerThreadId !== visibleManagerThreadId;
+    });
+
+    const renderThreadRow = (threadId: ThreadId) => (
+      <SidebarThreadRow
+        key={threadId}
+        threadId={threadId}
+        orderedProjectThreadIds={orderedProjectThreadIds}
+        routeThreadId={routeThreadId}
+        selectedThreadIds={selectedThreadIds}
+        showThreadJumpHints={showThreadJumpHints}
+        jumpLabel={threadJumpLabelById.get(threadId) ?? null}
+        appSettingsConfirmThreadArchive={appSettings.confirmThreadArchive}
+        renamingThreadId={renamingThreadId}
+        renamingTitle={renamingTitle}
+        setRenamingTitle={setRenamingTitle}
+        renamingInputRef={renamingInputRef}
+        renamingCommittedRef={renamingCommittedRef}
+        confirmingArchiveThreadId={confirmingArchiveThreadId}
+        setConfirmingArchiveThreadId={setConfirmingArchiveThreadId}
+        confirmArchiveButtonRefs={confirmArchiveButtonRefs}
+        handleThreadClick={handleThreadClick}
+        navigateToThread={navigateToThread}
+        handleMultiSelectContextMenu={handleMultiSelectContextMenu}
+        handleThreadContextMenu={handleThreadContextMenu}
+        clearSelection={clearSelection}
+        commitRename={commitRename}
+        cancelRename={cancelRename}
+        attemptArchiveThread={attemptArchiveThread}
+        openPrLink={openPrLink}
+        pr={prByThreadId.get(threadId) ?? null}
+      />
+    );
+
     return (
       <>
         <div className="group/project-header relative">
@@ -1766,37 +1815,15 @@ export default function Sidebar() {
               </div>
             </SidebarMenuSubItem>
           ) : null}
-          {shouldShowThreadPanel &&
-            renderedThreadIds.map((threadId) => (
-              <SidebarThreadRow
-                key={threadId}
-                threadId={threadId}
-                orderedProjectThreadIds={orderedProjectThreadIds}
-                routeThreadId={routeThreadId}
-                selectedThreadIds={selectedThreadIds}
-                showThreadJumpHints={showThreadJumpHints}
-                jumpLabel={threadJumpLabelById.get(threadId) ?? null}
-                appSettingsConfirmThreadArchive={appSettings.confirmThreadArchive}
-                renamingThreadId={renamingThreadId}
-                renamingTitle={renamingTitle}
-                setRenamingTitle={setRenamingTitle}
-                renamingInputRef={renamingInputRef}
-                renamingCommittedRef={renamingCommittedRef}
-                confirmingArchiveThreadId={confirmingArchiveThreadId}
-                setConfirmingArchiveThreadId={setConfirmingArchiveThreadId}
-                confirmArchiveButtonRefs={confirmArchiveButtonRefs}
-                handleThreadClick={handleThreadClick}
-                navigateToThread={navigateToThread}
-                handleMultiSelectContextMenu={handleMultiSelectContextMenu}
-                handleThreadContextMenu={handleThreadContextMenu}
-                clearSelection={clearSelection}
-                commitRename={commitRename}
-                cancelRename={cancelRename}
-                attemptArchiveThread={attemptArchiveThread}
-                openPrLink={openPrLink}
-                pr={prByThreadId.get(threadId) ?? null}
-              />
-            ))}
+          {shouldShowThreadPanel && visibleManagerThreadId
+            ? renderThreadRow(visibleManagerThreadId)
+            : null}
+          {shouldShowThreadPanel && nestedWorkerThreadIds.length > 0 ? (
+            <SidebarMenuSub className="ml-3 w-full gap-0.5 border-l border-border/60 pl-2">
+              {nestedWorkerThreadIds.map(renderThreadRow)}
+            </SidebarMenuSub>
+          ) : null}
+          {shouldShowThreadPanel && topLevelThreadIds.map(renderThreadRow)}
 
           {project.expanded && hasHiddenThreads && !isThreadListExpanded && (
             <SidebarMenuSubItem className="w-full">

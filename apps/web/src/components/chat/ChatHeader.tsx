@@ -17,6 +17,7 @@ import { OpenInPicker } from "./OpenInPicker";
 interface ChatHeaderProps {
   activeThreadId: ThreadId;
   activeThreadTitle: string;
+  activeThreadRoleBadge?: string | null;
   activeProjectName: string | undefined;
   isGitRepo: boolean;
   openInCwd: string | null;
@@ -41,6 +42,7 @@ interface ChatHeaderProps {
 export const ChatHeader = memo(function ChatHeader({
   activeThreadId,
   activeThreadTitle,
+  activeThreadRoleBadge,
   activeProjectName,
   isGitRepo,
   openInCwd,
@@ -71,6 +73,14 @@ export const ChatHeader = memo(function ChatHeader({
         >
           {activeThreadTitle}
         </h2>
+        {activeThreadRoleBadge && (
+          <Badge
+            variant="outline"
+            className="shrink-0 font-mono text-[10px] uppercase tracking-[0.14em]"
+          >
+            {activeThreadRoleBadge}
+          </Badge>
+        )}
         {activeProjectName && (
           <Badge variant="outline" className="min-w-0 shrink overflow-hidden">
             <span className="min-w-0 truncate">{activeProjectName}</span>

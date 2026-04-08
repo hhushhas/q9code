@@ -1419,6 +1419,9 @@ describe("ChatView timeline estimator parity (full app)", () => {
       await expect
         .element(page.getByRole("button", { name: "Delegate worker" }))
         .toBeInTheDocument();
+      await expect
+        .element(page.getByRole("button", { name: "Rename manager" }))
+        .toBeInTheDocument();
     } finally {
       await mounted.cleanup();
     }

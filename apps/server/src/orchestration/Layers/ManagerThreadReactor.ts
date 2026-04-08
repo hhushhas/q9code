@@ -9,7 +9,12 @@ import {
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import {
   extractManagerDelegation,
+  extractManagerInternalAlert,
+  formatManagerInternalAlert,
+  MANAGER_INTERACTION_MODE,
+  MANAGER_MODEL_SELECTION,
   MANAGER_WORKER_MODEL_SELECTION,
+  type ManagerInternalAlert,
   stripManagerDelegation,
 } from "@t3tools/shared/manager";
 import { Effect, FileSystem, Layer, Path, Stream } from "effect";
@@ -28,7 +33,8 @@ type RelevantEvent = Extract<
       | "thread.turn-start-requested"
       | "thread.message-sent"
       | "thread.turn-diff-completed"
-      | "thread.activity-appended";
+      | "thread.activity-appended"
+      | "thread.session-set";
   }
 >;
 
@@ -51,6 +57,8 @@ const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const handledManagerMessageIds = new Set<string>();
+  const pendingManagerAlerts = new Map<ThreadId, ManagerInternalAlert[]>();
+  const managerAlertDispatchInFlight = new Set<ThreadId>();
 
   const resolveThreadContext = Effect.fn("resolveThreadContext")(function* (threadId: ThreadId) {
     const readModel = yield* orchestrationEngine.getReadModel();
@@ -141,6 +149,79 @@ const make = Effect.gen(function* () {
       },
       createdAt: input.createdAt,
     });
+  });
+
+  const queueManagerAlert = (input: {
+    readonly managerThreadId: ThreadId;
+    readonly alert: ManagerInternalAlert;
+  }) =>
+    Effect.sync(() => {
+      const existing = pendingManagerAlerts.get(input.managerThreadId) ?? [];
+      pendingManagerAlerts.set(input.managerThreadId, [...existing, input.alert].slice(-16));
+    });
+
+  const clearManagerAlertDispatch = (managerThreadId: ThreadId) => {
+    managerAlertDispatchInFlight.delete(managerThreadId);
+  };
+
+  const canWakeManager = (thread: OrchestrationThread) => {
+    if (thread.deletedAt !== null) {
+      return false;
+    }
+    if (managerAlertDispatchInFlight.has(thread.id)) {
+      return false;
+    }
+    if (
+      thread.session &&
+      (thread.session.status === "running" || thread.session.status === "starting")
+    ) {
+      return false;
+    }
+    if (thread.session) {
+      return thread.session.activeTurnId === null;
+    }
+    return thread.latestTurn?.completedAt !== null || thread.latestTurn === null;
+  };
+
+  const flushManagerAlerts = Effect.fn("flushManagerAlerts")(function* (managerThreadId: ThreadId) {
+    const alerts = pendingManagerAlerts.get(managerThreadId);
+    if (!alerts || alerts.length === 0) {
+      return;
+    }
+
+    const readModel = yield* orchestrationEngine.getReadModel();
+    const managerThread = readModel.threads.find((thread) => thread.id === managerThreadId) ?? null;
+    if (!managerThread || !canWakeManager(managerThread)) {
+      return;
+    }
+
+    managerAlertDispatchInFlight.add(managerThreadId);
+    pendingManagerAlerts.delete(managerThreadId);
+
+    yield* orchestrationEngine.dispatch({
+      type: "thread.turn.start",
+      commandId: serverCommandId("manager-alert-turn-start"),
+      threadId: managerThread.id,
+      message: {
+        messageId: MessageId.makeUnsafe(crypto.randomUUID()),
+        role: "user",
+        text: formatManagerInternalAlert(alerts),
+        attachments: [],
+      },
+      modelSelection: MANAGER_MODEL_SELECTION,
+      titleSeed: managerThread.title,
+      runtimeMode: managerThread.runtimeMode,
+      interactionMode: MANAGER_INTERACTION_MODE,
+      createdAt: alerts.at(-1)?.createdAt ?? new Date().toISOString(),
+    });
+  });
+
+  const queueAndFlushManagerAlert = Effect.fn("queueAndFlushManagerAlert")(function* (input: {
+    readonly managerThreadId: ThreadId;
+    readonly alert: ManagerInternalAlert;
+  }) {
+    yield* queueManagerAlert(input);
+    yield* flushManagerAlerts(input.managerThreadId);
   });
 
   const launchDelegatedWorkers = Effect.fn("launchDelegatedWorkers")(function* (input: {
@@ -248,7 +329,13 @@ const make = Effect.gen(function* () {
           createdAt: event.payload.createdAt,
           lines: [
             context.thread.role === "manager"
-              ? `Manager received request: ${truncateText(message.text, 600)}`
+              ? (() => {
+                  const internalAlert = extractManagerInternalAlert(message.text);
+                  if (!internalAlert) {
+                    return `Manager received request: ${truncateText(message.text, 600)}`;
+                  }
+                  return `Manager received ${internalAlert.alerts.length} internal worker update${internalAlert.alerts.length === 1 ? "" : "s"}.`;
+                })()
               : `Worker task started: ${context.thread.title}`,
             ...(context.thread.role === "manager"
               ? []
@@ -326,6 +413,17 @@ const make = Effect.gen(function* () {
           },
           createdAt: assistantMessage.updatedAt,
         });
+        yield* queueAndFlushManagerAlert({
+          managerThreadId: context.managerThread.id,
+          alert: {
+            kind: "worker.completed",
+            workerThreadId: context.thread.id,
+            workerTitle: context.thread.title,
+            summary: "Completed the assigned work.",
+            details: truncateText(visibleResponse, 280),
+            createdAt: assistantMessage.updatedAt,
+          },
+        });
         return;
       }
 
@@ -348,7 +446,88 @@ const make = Effect.gen(function* () {
 
       case "thread.activity-appended": {
         const context = yield* resolveThreadContext(event.payload.threadId);
-        if (!context || event.payload.activity.tone !== "error") {
+        if (!context) {
+          return;
+        }
+
+        if (context.thread.role === "manager") {
+          if (event.payload.activity.tone === "error") {
+            yield* appendToManagerLog({
+              threadId: context.thread.id,
+              createdAt: event.payload.activity.createdAt,
+              lines: [`Error activity on manager: ${event.payload.activity.summary}`],
+            });
+          }
+          return;
+        }
+
+        if (event.payload.activity.kind === "approval.requested") {
+          yield* appendToManagerLog({
+            threadId: context.thread.id,
+            createdAt: event.payload.activity.createdAt,
+            lines: [
+              `Worker "${context.thread.title}" is waiting on approval: ${event.payload.activity.summary}`,
+            ],
+          });
+          yield* appendManagerActivity({
+            managerThreadId: context.managerThread.id,
+            kind: "manager.worker.blocked",
+            summary: `Worker "${context.thread.title}" needs approval`,
+            payload: {
+              workerThreadId: context.thread.id,
+              workerTitle: context.thread.title,
+              reason: event.payload.activity.summary,
+            },
+            createdAt: event.payload.activity.createdAt,
+          });
+          yield* queueAndFlushManagerAlert({
+            managerThreadId: context.managerThread.id,
+            alert: {
+              kind: "worker.approval-requested",
+              workerThreadId: context.thread.id,
+              workerTitle: context.thread.title,
+              summary: "Needs approval before it can continue.",
+              details: truncateText(event.payload.activity.summary, 240),
+              createdAt: event.payload.activity.createdAt,
+            },
+          });
+          return;
+        }
+
+        if (event.payload.activity.kind === "user-input.requested") {
+          yield* appendToManagerLog({
+            threadId: context.thread.id,
+            createdAt: event.payload.activity.createdAt,
+            lines: [
+              `Worker "${context.thread.title}" is waiting on user input: ${event.payload.activity.summary}`,
+            ],
+          });
+          yield* appendManagerActivity({
+            managerThreadId: context.managerThread.id,
+            kind: "manager.worker.blocked",
+            summary: `Worker "${context.thread.title}" needs input`,
+            payload: {
+              workerThreadId: context.thread.id,
+              workerTitle: context.thread.title,
+              reason: event.payload.activity.summary,
+            },
+            createdAt: event.payload.activity.createdAt,
+          });
+          yield* queueAndFlushManagerAlert({
+            managerThreadId: context.managerThread.id,
+            alert: {
+              kind: "worker.user-input-requested",
+              workerThreadId: context.thread.id,
+              workerTitle: context.thread.title,
+              summary: "Needs user input before it can continue.",
+              details: truncateText(event.payload.activity.summary, 240),
+              createdAt: event.payload.activity.createdAt,
+            },
+          });
+          return;
+        }
+
+        if (event.payload.activity.tone !== "error") {
           return;
         }
 
@@ -356,9 +535,83 @@ const make = Effect.gen(function* () {
           threadId: context.thread.id,
           createdAt: event.payload.activity.createdAt,
           lines: [
-            `Error activity on ${context.thread.role === "manager" ? "manager" : `worker "${context.thread.title}"`}: ${event.payload.activity.summary}`,
+            `Error activity on worker "${context.thread.title}": ${event.payload.activity.summary}`,
           ],
         });
+        yield* appendManagerActivity({
+          managerThreadId: context.managerThread.id,
+          kind: "manager.worker.failed",
+          summary: `Worker "${context.thread.title}" hit an error`,
+          payload: {
+            workerThreadId: context.thread.id,
+            workerTitle: context.thread.title,
+            reason: event.payload.activity.summary,
+          },
+          createdAt: event.payload.activity.createdAt,
+        });
+        yield* queueAndFlushManagerAlert({
+          managerThreadId: context.managerThread.id,
+          alert: {
+            kind: "worker.error",
+            workerThreadId: context.thread.id,
+            workerTitle: context.thread.title,
+            summary: "Hit an error and may need intervention.",
+            details: truncateText(event.payload.activity.summary, 240),
+            createdAt: event.payload.activity.createdAt,
+          },
+        });
+        return;
+      }
+
+      case "thread.session-set": {
+        const context = yield* resolveThreadContext(event.payload.threadId);
+        if (!context) {
+          return;
+        }
+
+        if (context.thread.role === "manager") {
+          if (
+            event.payload.session.status !== "running" &&
+            event.payload.session.status !== "starting"
+          ) {
+            clearManagerAlertDispatch(context.thread.id);
+            yield* flushManagerAlerts(context.thread.id);
+          }
+          return;
+        }
+
+        if (
+          event.payload.session.status === "error" ||
+          event.payload.session.status === "interrupted" ||
+          event.payload.session.status === "stopped"
+        ) {
+          yield* appendManagerActivity({
+            managerThreadId: context.managerThread.id,
+            kind: "manager.worker.status-changed",
+            summary: `Worker "${context.thread.title}" is ${event.payload.session.status}`,
+            payload: {
+              workerThreadId: context.thread.id,
+              workerTitle: context.thread.title,
+              status: event.payload.session.status,
+              lastError: event.payload.session.lastError,
+            },
+            createdAt: event.payload.session.updatedAt,
+          });
+          yield* queueAndFlushManagerAlert({
+            managerThreadId: context.managerThread.id,
+            alert: {
+              kind: `worker.${event.payload.session.status}`,
+              workerThreadId: context.thread.id,
+              workerTitle: context.thread.title,
+              summary: `Session moved to ${event.payload.session.status}.`,
+              details: truncateText(
+                event.payload.session.lastError ?? event.payload.session.status,
+                240,
+              ),
+              createdAt: event.payload.session.updatedAt,
+            },
+          });
+        }
         return;
       }
     }
@@ -385,6 +638,7 @@ const make = Effect.gen(function* () {
           case "thread.message-sent":
           case "thread.turn-diff-completed":
           case "thread.activity-appended":
+          case "thread.session-set":
             return worker.enqueue(event);
           default:
             return Effect.void;

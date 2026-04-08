@@ -1,5 +1,9 @@
 import type { OrchestrationReadModel, OrchestrationThread, ThreadId } from "@t3tools/contracts";
-import { MANAGER_DELEGATION_CLOSE_TAG, MANAGER_DELEGATION_OPEN_TAG } from "@t3tools/shared/manager";
+import {
+  extractManagerInternalAlert,
+  MANAGER_DELEGATION_CLOSE_TAG,
+  MANAGER_DELEGATION_OPEN_TAG,
+} from "@t3tools/shared/manager";
 
 function findThread(
   readModel: OrchestrationReadModel,
@@ -43,15 +47,29 @@ export function buildManagerTurnInput(input: {
   const projectTitle = resolveProjectTitle(input.readModel, input.thread.projectId);
   const scratchpad = input.thread.managerScratchpad;
   const knownWorkers = buildKnownWorkerSummary(input.readModel, input.thread.id);
+  const internalAlert = extractManagerInternalAlert(input.userMessageText);
+  const requestSection = internalAlert
+    ? [
+        "Internal worker alert:",
+        ...internalAlert.alerts.map((alert) => {
+          const details = alert.details ? ` · ${alert.details}` : "";
+          return `- ${alert.workerTitle}: ${alert.summary}${details}`;
+        }),
+      ].join("\n")
+    : `User request:\n${input.userMessageText}`;
 
   return [
     `You are the project manager for "${projectTitle}".`,
     "Coordinate the work. Do not directly perform implementation-heavy execution yourself unless the user explicitly overrides this workflow.",
     "Your default job is to clarify, plan, and delegate bounded worker threads.",
+    "Follow project-level AGENTS.md guidance when it helps, but your manager role rules here stay authoritative if there is any tension.",
     scratchpad
       ? `Sacred manager folder: ${scratchpad.folderPath}\nSacred session log: ${scratchpad.sessionLogPath}`
-      : "No sacred manager log path is available yet.",
+      : "No sacred manager log path is available yet. Inform the user something went wrong.",
     "Before delegating, use the sacred session log when continuity or history matters.",
+    internalAlert
+      ? "This input is a system-level worker update, not a fresh human request. Reconcile worker progress, decide next steps, and only ask the human for help if there is a real blocker or decision."
+      : "If the human asks for execution, delegate bounded workers instead of doing the implementation yourself.",
     "When the request needs execution, end your reply with exactly one delegation block using this format:",
     MANAGER_DELEGATION_OPEN_TAG,
     '{"summary":"short coordination note","workers":[{"title":"Short worker title","prompt":"Full worker assignment"}]}',
@@ -60,7 +78,7 @@ export function buildManagerTurnInput(input: {
     "Only request multiple workers when the tasks are clearly parallel and non-overlapping.",
     "Keep the human-visible part of your reply concise and managerial.",
     `Current workers:\n${knownWorkers}`,
-    `User request:\n${input.userMessageText}`,
+    requestSection,
   ].join("\n\n");
 }
 
@@ -79,7 +97,9 @@ export function buildWorkerTurnInput(input: {
       ? `You are delegated by manager "${managerThread.title}" (${managerThread.id}).`
       : "",
     "Stay tightly scoped to the assigned task. Execute the work and report concrete outcomes.",
-    "Do not spawn additional workers yourself. Do not re-plan the whole project unless the task explicitly asks for that.",
+    "Do not spawn additional Q9 workers yourself. Do not re-plan the whole project unless the task explicitly asks for that.",
+    "You may use codex-app internal subagents for exploration, investigation, or support work when that helps, but do not expand the Q9 manager-worker hierarchy.",
+    "Follow helpful project guidance from AGENTS.md, but your worker-role constraints here remain authoritative if there is any conflict.",
     managerScratchpad
       ? `Manager folder: ${managerScratchpad.folderPath}\nManager session log: ${managerScratchpad.sessionLogPath}`
       : "",

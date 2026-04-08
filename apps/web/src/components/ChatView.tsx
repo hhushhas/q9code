@@ -22,7 +22,11 @@ import {
   RuntimeMode,
   TerminalOpenInput,
 } from "@t3tools/contracts";
-import { extractManagerDelegation, stripManagerDelegation } from "@t3tools/shared/manager";
+import {
+  extractManagerDelegation,
+  isManagerInternalAlert,
+  stripManagerDelegation,
+} from "@t3tools/shared/manager";
 import { applyClaudePromptEffortPrefix, normalizeModelSlug } from "@t3tools/shared/model";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
@@ -160,6 +164,7 @@ import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { ChatHeader } from "./chat/ChatHeader";
 import { ContextWindowMeter } from "./chat/ContextWindowMeter";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./chat/ExpandedImagePreview";
+import { ManagerConsolePane } from "./ManagerConsolePane";
 import { ManagerThreadPanel } from "./ManagerThreadPanel";
 import { AVAILABLE_PROVIDER_OPTIONS, ProviderModelPicker } from "./chat/ProviderModelPicker";
 import { ComposerCommandItem, ComposerCommandMenu } from "./chat/ComposerCommandMenu";
@@ -1302,7 +1307,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }, ATTACHMENT_PREVIEW_HANDOFF_TTL_MS);
   }, []);
   const serverMessages = activeThread?.messages;
-  const sanitizeManagerAssistantMessage = useCallback((message: ChatMessage): ChatMessage => {
+  const sanitizeTimelineMessage = useCallback((message: ChatMessage): ChatMessage | null => {
+    if (message.role === "user" && isManagerInternalAlert(message.text)) {
+      return null;
+    }
+
     if (message.role !== "assistant") {
       return message;
     }
@@ -1371,22 +1380,28 @@ export default function ChatView({ threadId }: ChatViewProps) {
           });
 
     if (optimisticUserMessages.length === 0) {
-      return serverMessagesWithPreviewHandoff.map(sanitizeManagerAssistantMessage);
+      return serverMessagesWithPreviewHandoff
+        .map(sanitizeTimelineMessage)
+        .filter((message): message is ChatMessage => message !== null);
     }
     const serverIds = new Set(serverMessagesWithPreviewHandoff.map((message) => message.id));
     const pendingMessages = optimisticUserMessages.filter((message) => !serverIds.has(message.id));
     if (pendingMessages.length === 0) {
-      return serverMessagesWithPreviewHandoff.map(sanitizeManagerAssistantMessage);
+      return serverMessagesWithPreviewHandoff
+        .map(sanitizeTimelineMessage)
+        .filter((message): message is ChatMessage => message !== null);
     }
     return [
-      ...serverMessagesWithPreviewHandoff.map(sanitizeManagerAssistantMessage),
+      ...serverMessagesWithPreviewHandoff
+        .map(sanitizeTimelineMessage)
+        .filter((message): message is ChatMessage => message !== null),
       ...pendingMessages,
     ];
   }, [
     serverMessages,
     attachmentPreviewHandoffByMessageId,
     optimisticUserMessages,
-    sanitizeManagerAssistantMessage,
+    sanitizeTimelineMessage,
   ]);
   const timelineEntries = useMemo(
     () =>
@@ -4089,6 +4104,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
         <ChatHeader
           activeThreadId={activeThread.id}
           activeThreadTitle={activeThread.title}
+          activeThreadRoleBadge={
+            isManagerThread ? "Manager" : activeThread.managerThreadId ? "Worker" : null
+          }
           activeProjectName={activeProject?.name}
           isGitRepo={isGitRepo}
           openInCwd={gitCwd}
@@ -4123,8 +4141,41 @@ export default function ChatView({ threadId }: ChatViewProps) {
       />
       {/* Main content area with optional plan sidebar */}
       <div className="flex min-h-0 min-w-0 flex-1">
+        {isManagerThread && activeProject ? (
+          <aside className="hidden min-h-0 w-[24rem] shrink-0 border-r border-border/70 bg-background/70 p-3 lg:block">
+            <div className="h-full overflow-y-auto pr-1">
+              <ManagerConsolePane
+                managerThread={activeThread}
+                activeProject={activeProject}
+                projectThreads={projectThreads}
+                onOpenThread={(nextThreadId) => {
+                  void navigate({
+                    to: "/$threadId",
+                    params: { threadId: nextThreadId },
+                  });
+                }}
+              />
+            </div>
+          </aside>
+        ) : null}
+
         {/* Chat column */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {isManagerThread && activeProject ? (
+            <div className="border-b border-border/70 p-3 lg:hidden">
+              <ManagerConsolePane
+                managerThread={activeThread}
+                activeProject={activeProject}
+                projectThreads={projectThreads}
+                onOpenThread={(nextThreadId) => {
+                  void navigate({
+                    to: "/$threadId",
+                    params: { threadId: nextThreadId },
+                  });
+                }}
+              />
+            </div>
+          ) : null}
           {/* Messages Wrapper */}
           <div className="relative flex min-h-0 flex-1 flex-col">
             {/* Messages */}

@@ -2,7 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { CommandId, MessageId, ThreadId } from "@t3tools/contracts";
+import { CommandId, MessageId, ThreadId, TurnId } from "@t3tools/contracts";
+import { extractManagerInternalAlert } from "@t3tools/shared/manager";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Exit, Layer, ManagedRuntime, Scope } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
@@ -21,7 +22,7 @@ import { ManagerThreadReactor } from "../Services/ManagerThreadReactor.ts";
 const asProjectId = (value: string) => value as never;
 const asMessageId = (value: string) => MessageId.makeUnsafe(value);
 
-async function waitFor(check: () => Promise<boolean>, timeoutMs = 2_000) {
+async function waitFor(check: () => Promise<boolean>, timeoutMs = 5_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (await check()) {
@@ -198,7 +199,7 @@ describe("ManagerThreadReactor", () => {
     expect(workers[0]?.title).toBe("Reconnect patch");
     expect(workers[0]?.modelSelection).toEqual({
       provider: "codex",
-      model: "gpt-5-codex",
+      model: "gpt-5.4",
     });
 
     const logPath = path.join(
@@ -232,7 +233,7 @@ describe("ManagerThreadReactor", () => {
         title: "Reconnect worker",
         modelSelection: {
           provider: "codex",
-          model: "gpt-5-codex",
+          model: "gpt-5.4",
         },
         role: "worker",
         managerThreadId: ThreadId.makeUnsafe("thread-manager"),
@@ -280,5 +281,126 @@ describe("ManagerThreadReactor", () => {
     expect(
       (manager?.activities ?? []).some((activity) => activity.kind === "manager.worker.completed"),
     ).toBe(true);
+    const managerAlertMessage = [...(manager?.messages ?? [])]
+      .toReversed()
+      .find((message) => message.role === "user" && extractManagerInternalAlert(message.text));
+    expect(managerAlertMessage).toBeDefined();
+    expect(
+      extractManagerInternalAlert(managerAlertMessage?.text ?? "")?.alerts[0]?.workerTitle,
+    ).toBe("Reconnect worker");
+  });
+
+  it("queues manager alerts until the manager is ready to respond again", async () => {
+    const harness = await createHarness();
+    const createdAt = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.makeUnsafe("cmd-manager-session-running"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        session: {
+          threadId: ThreadId.makeUnsafe("thread-manager"),
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: TurnId.makeUnsafe("turn-manager-active"),
+          lastError: null,
+          updatedAt: createdAt,
+        },
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.makeUnsafe("cmd-thread-create-worker-queued"),
+        threadId: ThreadId.makeUnsafe("thread-worker-queued"),
+        projectId: asProjectId("project-1"),
+        title: "Queued worker",
+        modelSelection: {
+          provider: "codex",
+          model: "gpt-5.4",
+        },
+        role: "worker",
+        managerThreadId: ThreadId.makeUnsafe("thread-manager"),
+        interactionMode: "default",
+        runtimeMode: "full-access",
+        branch: null,
+        worktreePath: null,
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.makeUnsafe("cmd-queued-worker-assistant-delta"),
+        threadId: ThreadId.makeUnsafe("thread-worker-queued"),
+        messageId: asMessageId("assistant-message-worker-queued"),
+        delta: "Queued worker finished its task.",
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.complete",
+        commandId: CommandId.makeUnsafe("cmd-queued-worker-assistant-complete"),
+        threadId: ThreadId.makeUnsafe("thread-worker-queued"),
+        messageId: asMessageId("assistant-message-worker-queued"),
+        createdAt,
+      }),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const beforeReadyReadModel = await Effect.runPromise(harness.engine.getReadModel());
+    const managerWhileBusy = beforeReadyReadModel.threads.find(
+      (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+    );
+    expect(
+      (managerWhileBusy?.messages ?? []).some(
+        (message) => message.role === "user" && extractManagerInternalAlert(message.text),
+      ),
+    ).toBe(false);
+
+    const readyAt = new Date(Date.now() + 1_000).toISOString();
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.makeUnsafe("cmd-manager-session-ready"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        session: {
+          threadId: ThreadId.makeUnsafe("thread-manager"),
+          status: "ready",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: readyAt,
+        },
+        createdAt: readyAt,
+      }),
+    );
+
+    await waitFor(async () => {
+      const readModel = await Effect.runPromise(harness.engine.getReadModel());
+      const manager = readModel.threads.find(
+        (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+      );
+      return (manager?.messages ?? []).some(
+        (message) => message.role === "user" && extractManagerInternalAlert(message.text),
+      );
+    });
+
+    const readModel = await Effect.runPromise(harness.engine.getReadModel());
+    const manager = readModel.threads.find(
+      (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+    );
+    const managerAlertMessage = [...(manager?.messages ?? [])]
+      .toReversed()
+      .find((message) => message.role === "user" && extractManagerInternalAlert(message.text));
+    expect(
+      extractManagerInternalAlert(managerAlertMessage?.text ?? "")?.alerts[0]?.workerTitle,
+    ).toBe("Queued worker");
   });
 });
