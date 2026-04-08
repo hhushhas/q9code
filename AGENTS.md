@@ -5,6 +5,10 @@
 - All of `bun fmt`, `bun lint`, and `bun typecheck` must pass before considering tasks completed.
 - NEVER run `bun test`. Always use `bun run test` (runs Vitest).
 
+## Local Skills
+
+- Use the repo-local release skill at `.agents/skills/q9-release/SKILL.md` when Hasan asks to ship, release a version, build a new DMG, or package the latest Q9 desktop build.
+
 ## Project Snapshot
 
 Q9 Code is a minimal web GUI for using coding agents like Codex and Claude.
@@ -28,11 +32,11 @@ Long term maintainability is a core priority. If you add new functionality, firs
 - `apps/server`: Node.js WebSocket server. Wraps Codex app-server (JSON-RPC over stdio), serves the React web app, and manages provider sessions.
 - `apps/web`: React/Vite UI. Owns session UX, conversation/event rendering, and client-side state. Connects to the server via WebSocket.
 - `packages/contracts`: Shared effect/Schema schemas and TypeScript contracts for provider events, WebSocket protocol, and model/session types. Keep this package schema-only — no runtime logic.
-- `packages/shared`: Shared runtime utilities consumed by both server and web. Uses explicit subpath exports (e.g. `@t3tools/shared/git`) — no barrel index.
+- `packages/shared`: Shared runtime utilities consumed by both server and web. Uses explicit subpath exports (e.g. `@q9tools/shared/git`) — no barrel index.
 
 ## Codex App Server (Important)
 
-T3 Code is currently Codex-first. The server starts `codex app-server` (JSON-RPC over stdio) per provider session, then streams structured events to the browser through WebSocket push messages.
+Q9 Code is currently Codex-first. The server starts `codex app-server` (JSON-RPC over stdio) per provider session, then streams structured events to the browser through WebSocket push messages.
 
 How we use it in this codebase:
 
