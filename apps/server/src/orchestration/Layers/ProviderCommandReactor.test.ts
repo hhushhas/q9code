@@ -325,6 +325,127 @@ describe("ProviderCommandReactor", () => {
     expect(thread?.session?.runtimeMode).toBe("approval-required");
   });
 
+  it("injects manager coordination instructions into manager turns", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.makeUnsafe("cmd-thread-create-manager-runtime"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        projectId: asProjectId("project-1"),
+        title: "Project manager",
+        modelSelection: {
+          provider: "codex",
+          model: "gpt-5-codex",
+        },
+        role: "manager",
+        interactionMode: "plan",
+        runtimeMode: "full-access",
+        branch: null,
+        worktreePath: null,
+        createdAt: now,
+      }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-turn-start-manager-runtime"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        message: {
+          messageId: asMessageId("user-message-manager-runtime"),
+          role: "user",
+          text: "Ship the reconnect fix with a worker.",
+          attachments: [],
+        },
+        interactionMode: "plan",
+        runtimeMode: "full-access",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
+      threadId: ThreadId.makeUnsafe("thread-manager"),
+    });
+    const managerTurn = harness.sendTurn.mock.calls[0]?.[0] as { input?: string } | undefined;
+    expect(managerTurn?.input).toContain("You are the project manager");
+    expect(managerTurn?.input).toContain("<manager_delegation>");
+  });
+
+  it("injects scoped worker instructions into manager-owned worker turns", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.makeUnsafe("cmd-thread-create-manager-runtime-worker"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        projectId: asProjectId("project-1"),
+        title: "Project manager",
+        modelSelection: {
+          provider: "codex",
+          model: "gpt-5-codex",
+        },
+        role: "manager",
+        interactionMode: "plan",
+        runtimeMode: "full-access",
+        branch: null,
+        worktreePath: null,
+        createdAt: now,
+      }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.makeUnsafe("cmd-thread-create-worker-runtime"),
+        threadId: ThreadId.makeUnsafe("thread-worker-runtime"),
+        projectId: asProjectId("project-1"),
+        title: "Reconnect worker",
+        modelSelection: {
+          provider: "codex",
+          model: "gpt-5-codex",
+        },
+        role: "worker",
+        managerThreadId: ThreadId.makeUnsafe("thread-manager"),
+        interactionMode: "default",
+        runtimeMode: "full-access",
+        branch: null,
+        worktreePath: null,
+        createdAt: now,
+      }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-turn-start-worker-runtime"),
+        threadId: ThreadId.makeUnsafe("thread-worker-runtime"),
+        message: {
+          messageId: asMessageId("user-message-worker-runtime"),
+          role: "user",
+          text: "Patch the reconnect flow.",
+          attachments: [],
+        },
+        interactionMode: "default",
+        runtimeMode: "full-access",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
+      threadId: ThreadId.makeUnsafe("thread-worker-runtime"),
+    });
+    const workerTurn = harness.sendTurn.mock.calls[0]?.[0] as { input?: string } | undefined;
+    expect(workerTurn?.input).toContain("You are a worker thread");
+    expect(workerTurn?.input).toContain("delegated by manager");
+  });
+
   it("generates a thread title on the first turn", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();

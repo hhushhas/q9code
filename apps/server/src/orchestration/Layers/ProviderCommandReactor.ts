@@ -22,6 +22,7 @@ import { ProviderAdapterRequestError, ProviderServiceError } from "../../provide
 import { TextGeneration } from "../../git/Services/TextGeneration.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
+import { buildThreadTurnInput } from "../managerRuntime.ts";
 import {
   ProviderCommandReactor,
   type ProviderCommandReactorShape,
@@ -372,6 +373,7 @@ const make = Effect.gen(function* () {
     if (!thread) {
       return;
     }
+    const readModel = yield* orchestrationEngine.getReadModel();
     yield* ensureSessionForThread(
       input.threadId,
       input.createdAt,
@@ -405,7 +407,15 @@ const make = Effect.gen(function* () {
 
     yield* providerService.sendTurn({
       threadId: input.threadId,
-      ...(normalizedInput ? { input: normalizedInput } : {}),
+      ...(normalizedInput
+        ? {
+            input: buildThreadTurnInput({
+              readModel,
+              thread,
+              userMessageText: normalizedInput,
+            }),
+          }
+        : {}),
       ...(normalizedAttachments.length > 0 ? { attachments: normalizedAttachments } : {}),
       ...(input.skills && input.skills.length > 0 ? { skills: [...input.skills] } : {}),
       ...(modelForTurn !== undefined ? { modelSelection: modelForTurn } : {}),

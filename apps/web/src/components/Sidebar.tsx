@@ -1,12 +1,12 @@
 import {
   ArchiveIcon,
   ArrowUpDownIcon,
+  BotIcon,
   ChevronRightIcon,
   FolderIcon,
   GitPullRequestIcon,
   PlusIcon,
   SettingsIcon,
-  SquarePenIcon,
   TerminalIcon,
   TriangleAlertIcon,
 } from "lucide-react";
@@ -49,6 +49,7 @@ import {
   ThreadId,
   type GitStatusResult,
 } from "@t3tools/contracts";
+import { MANAGER_THREAD_TITLE } from "@t3tools/shared/manager";
 import { useQueries } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import {
@@ -73,7 +74,6 @@ import {
 import { gitStatusQueryOptions } from "../lib/gitReactQuery";
 import { readNativeApi } from "../nativeApi";
 import { useComposerDraftStore } from "../composerDraftStore";
-import { useHandleNewThread } from "../hooks/useHandleNewThread";
 
 import { useThreadActions } from "../hooks/useThreadActions";
 import { toastManager } from "./ui/toast";
@@ -115,8 +115,6 @@ import {
   resolveAdjacentThreadId,
   isContextMenuPointerDown,
   resolveProjectStatusIndicator,
-  resolveSidebarNewThreadSeedContext,
-  resolveSidebarNewThreadEnvMode,
   resolveThreadRowClassName,
   resolveThreadStatusPill,
   orderItemsByPreferredIds,
@@ -699,7 +697,6 @@ export default function Sidebar() {
   const isOnSettings = pathname.startsWith("/settings");
   const appSettings = useSettings();
   const { updateSettings } = useUpdateSettings();
-  const { activeDraftThread, activeThread, handleNewThread } = useHandleNewThread();
   const { archiveThread, deleteThread } = useThreadActions();
   const routeThreadId = useParams({
     strict: false,
@@ -854,23 +851,74 @@ export default function Sidebar() {
     [archiveThread],
   );
 
-  const focusMostRecentThreadForProject = useCallback(
-    (projectId: ProjectId) => {
-      const latestThread = sortThreadsForSidebar(
-        (threadIdsByProjectId[projectId] ?? [])
-          .map((threadId) => sidebarThreadsById[threadId])
-          .filter((thread): thread is NonNullable<typeof thread> => thread !== undefined)
-          .filter((thread) => thread.archivedAt === null),
-        appSettings.sidebarThreadSortOrder,
-      )[0];
-      if (!latestThread) return;
+  const createOrOpenManagerThread = useCallback(
+    async (project: Project) => {
+      const api = readNativeApi();
+      if (!api) {
+        return;
+      }
 
-      void navigate({
-        to: "/$threadId",
-        params: { threadId: latestThread.id },
-      });
+      const existingManagerThread = (threadIdsByProjectId[project.id] ?? [])
+        .map((threadId) => sidebarThreadsById[threadId])
+        .find(
+          (thread): thread is NonNullable<typeof thread> =>
+            thread !== undefined && thread.role === "manager",
+        );
+      if (existingManagerThread) {
+        if (selectedThreadIds.size > 0) {
+          clearSelection();
+        }
+        setSelectionAnchor(existingManagerThread.id);
+        void navigate({
+          to: "/$threadId",
+          params: { threadId: existingManagerThread.id },
+        });
+        return;
+      }
+
+      const threadId = ThreadId.makeUnsafe(crypto.randomUUID());
+      try {
+        await api.orchestration.dispatchCommand({
+          type: "thread.create",
+          commandId: newCommandId(),
+          threadId,
+          projectId: project.id,
+          title: MANAGER_THREAD_TITLE,
+          modelSelection: project.defaultModelSelection ?? {
+            provider: "codex",
+            model: DEFAULT_MODEL_BY_PROVIDER.codex,
+          },
+          role: "manager",
+          runtimeMode: "full-access",
+          interactionMode: "plan",
+          branch: null,
+          worktreePath: null,
+          createdAt: new Date().toISOString(),
+        });
+        if (selectedThreadIds.size > 0) {
+          clearSelection();
+        }
+        setSelectionAnchor(threadId);
+        void navigate({
+          to: "/$threadId",
+          params: { threadId },
+        });
+      } catch (error) {
+        toastManager.add({
+          type: "error",
+          title: "Unable to open project manager",
+          description: error instanceof Error ? error.message : "An unexpected error occurred.",
+        });
+      }
     },
-    [appSettings.sidebarThreadSortOrder, navigate, sidebarThreadsById, threadIdsByProjectId],
+    [
+      clearSelection,
+      navigate,
+      selectedThreadIds.size,
+      setSelectionAnchor,
+      sidebarThreadsById,
+      threadIdsByProjectId,
+    ],
   );
 
   const addProjectFromPath = useCallback(
@@ -890,7 +938,7 @@ export default function Sidebar() {
 
       const existing = projects.find((project) => project.cwd === cwd);
       if (existing) {
-        focusMostRecentThreadForProject(existing.id);
+        await createOrOpenManagerThread(existing);
         finishAddingProject();
         return;
       }
@@ -911,8 +959,15 @@ export default function Sidebar() {
           },
           createdAt,
         });
-        await handleNewThread(projectId, {
-          envMode: appSettings.defaultThreadEnvMode,
+        await createOrOpenManagerThread({
+          id: projectId,
+          name: title,
+          cwd,
+          defaultModelSelection: {
+            provider: "codex",
+            model: DEFAULT_MODEL_BY_PROVIDER.codex,
+          },
+          scripts: [],
         }).catch(() => undefined);
       } catch (error) {
         const description =
@@ -931,14 +986,7 @@ export default function Sidebar() {
       }
       finishAddingProject();
     },
-    [
-      focusMostRecentThreadForProject,
-      handleNewThread,
-      isAddingProject,
-      projects,
-      shouldBrowseForProjectImmediately,
-      appSettings.defaultThreadEnvMode,
-    ],
+    [isAddingProject, projects, shouldBrowseForProjectImmediately, createOrOpenManagerThread],
   );
 
   const handleAddProject = () => {
@@ -1413,6 +1461,13 @@ export default function Sidebar() {
             .filter((thread) => thread.archivedAt === null),
           appSettings.sidebarThreadSortOrder,
         );
+        const managerThreadId =
+          (threadIdsByProjectId[project.id] ?? [])
+            .map((threadId) => sidebarThreadsById[threadId])
+            .find(
+              (thread): thread is NonNullable<typeof thread> =>
+                thread !== undefined && thread.role === "manager",
+            )?.id ?? null;
         const projectStatus = resolveProjectStatusIndicator(
           projectThreads.map((thread) => resolveProjectThreadStatus(thread)),
         );
@@ -1448,6 +1503,7 @@ export default function Sidebar() {
           orderedProjectThreadIds,
           project,
           projectStatus,
+          managerThreadId,
           renderedThreadIds,
           showEmptyThreadState,
           shouldShowThreadPanel,
@@ -1593,6 +1649,7 @@ export default function Sidebar() {
       orderedProjectThreadIds,
       project,
       projectStatus,
+      managerThreadId,
       renderedThreadIds,
       showEmptyThreadState,
       shouldShowThreadPanel,
@@ -1655,8 +1712,12 @@ export default function Sidebar() {
                   render={
                     <button
                       type="button"
-                      aria-label={`Create new thread in ${project.name}`}
-                      data-testid="new-thread-button"
+                      aria-label={
+                        managerThreadId
+                          ? `Open project manager for ${project.name}`
+                          : `Create project manager for ${project.name}`
+                      }
+                      data-testid="project-manager-button"
                     />
                   }
                   showOnHover
@@ -1664,44 +1725,15 @@ export default function Sidebar() {
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
-                    const seedContext = resolveSidebarNewThreadSeedContext({
-                      projectId: project.id,
-                      defaultEnvMode: resolveSidebarNewThreadEnvMode({
-                        defaultEnvMode: appSettings.defaultThreadEnvMode,
-                      }),
-                      activeThread:
-                        activeThread && activeThread.projectId === project.id
-                          ? {
-                              projectId: activeThread.projectId,
-                              branch: activeThread.branch,
-                              worktreePath: activeThread.worktreePath,
-                            }
-                          : null,
-                      activeDraftThread:
-                        activeDraftThread && activeDraftThread.projectId === project.id
-                          ? {
-                              projectId: activeDraftThread.projectId,
-                              branch: activeDraftThread.branch,
-                              worktreePath: activeDraftThread.worktreePath,
-                              envMode: activeDraftThread.envMode,
-                            }
-                          : null,
-                    });
-                    void handleNewThread(project.id, {
-                      ...(seedContext.branch !== undefined ? { branch: seedContext.branch } : {}),
-                      ...(seedContext.worktreePath !== undefined
-                        ? { worktreePath: seedContext.worktreePath }
-                        : {}),
-                      envMode: seedContext.envMode,
-                    });
+                    void createOrOpenManagerThread(project);
                   }}
                 >
-                  <SquarePenIcon className="size-3.5" />
+                  <BotIcon className="size-3.5" />
                 </SidebarMenuAction>
               }
             />
             <TooltipPopup side="top">
-              {newThreadShortcutLabel ? `New thread (${newThreadShortcutLabel})` : "New thread"}
+              {managerThreadId ? "Open manager" : "Create manager"}
             </TooltipPopup>
           </Tooltip>
         </div>
@@ -1887,10 +1919,6 @@ export default function Sidebar() {
     desktopUpdateState && showArm64IntelBuildWarning
       ? getArm64IntelBuildWarningDescription(desktopUpdateState)
       : null;
-  const newThreadShortcutLabel =
-    shortcutLabelForCommand(keybindings, "chat.newLocal", sidebarShortcutLabelOptions) ??
-    shortcutLabelForCommand(keybindings, "chat.new", sidebarShortcutLabelOptions);
-
   const handleDesktopUpdateButtonClick = useCallback(() => {
     const bridge = window.desktopBridge;
     if (!bridge || !desktopUpdateState) return;

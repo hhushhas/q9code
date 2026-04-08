@@ -1,10 +1,5 @@
-import {
-  CommandId,
-  DEFAULT_PROVIDER_INTERACTION_MODE,
-  type ModelSelection,
-  ProjectId,
-  ThreadId,
-} from "@t3tools/contracts";
+import { CommandId, type ModelSelection, ProjectId, ThreadId } from "@t3tools/contracts";
+import { MANAGER_THREAD_TITLE } from "@t3tools/shared/manager";
 import {
   Data,
   Deferred,
@@ -200,9 +195,10 @@ const autoBootstrapWelcome = Effect.gen(function* () {
           commandId: CommandId.makeUnsafe(crypto.randomUUID()),
           threadId: createdThreadId,
           projectId: nextProjectId,
-          title: "New thread",
+          title: MANAGER_THREAD_TITLE,
           modelSelection: nextProjectDefaultModelSelection,
-          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          role: "manager",
+          interactionMode: "plan",
           runtimeMode: "full-access",
           branch: null,
           worktreePath: null,

@@ -22,6 +22,7 @@ import {
   RuntimeMode,
   TerminalOpenInput,
 } from "@t3tools/contracts";
+import { extractManagerDelegation, stripManagerDelegation } from "@t3tools/shared/manager";
 import { applyClaudePromptEffortPrefix, normalizeModelSlug } from "@t3tools/shared/model";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
@@ -158,6 +159,7 @@ import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { ChatHeader } from "./chat/ChatHeader";
 import { ContextWindowMeter } from "./chat/ContextWindowMeter";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./chat/ExpandedImagePreview";
+import { ManagerThreadPanel } from "./ManagerThreadPanel";
 import { AVAILABLE_PROVIDER_OPTIONS, ProviderModelPicker } from "./chat/ProviderModelPicker";
 import { ComposerCommandItem, ComposerCommandMenu } from "./chat/ComposerCommandMenu";
 import { formatComposerSkillChipLabel } from "./composerInlineChip";
@@ -910,6 +912,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
   }, [activeThreadId, existingOpenTerminalThreadIds, terminalState.terminalOpen]);
   const latestTurnSettled = isLatestTurnSettled(activeLatestTurn, activeThread?.session ?? null);
   const activeProject = useProjectById(activeThread?.projectId);
+  const projectThreads = useStore((store) =>
+    activeThread
+      ? store.threads.filter((thread) => thread.projectId === activeThread.projectId)
+      : [],
+  );
 
   const openPullRequestDialog = useCallback(
     (reference?: string) => {
@@ -1290,6 +1297,31 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }, ATTACHMENT_PREVIEW_HANDOFF_TTL_MS);
   }, []);
   const serverMessages = activeThread?.messages;
+  const sanitizeManagerAssistantMessage = useCallback((message: ChatMessage): ChatMessage => {
+    if (message.role !== "assistant") {
+      return message;
+    }
+
+    const visibleText = stripManagerDelegation(message.text);
+    if (visibleText === message.text) {
+      return message;
+    }
+
+    if (visibleText.length > 0) {
+      return {
+        ...message,
+        text: visibleText,
+      };
+    }
+
+    const manifest = extractManagerDelegation(message.text);
+    return {
+      ...message,
+      text: manifest
+        ? `Delegated ${manifest.workers.length} worker${manifest.workers.length === 1 ? "" : "s"}.`
+        : "",
+    };
+  }, []);
   const timelineMessages = useMemo(() => {
     const messages = serverMessages ?? [];
     const serverMessagesWithPreviewHandoff =
@@ -1334,15 +1366,23 @@ export default function ChatView({ threadId }: ChatViewProps) {
           });
 
     if (optimisticUserMessages.length === 0) {
-      return serverMessagesWithPreviewHandoff;
+      return serverMessagesWithPreviewHandoff.map(sanitizeManagerAssistantMessage);
     }
     const serverIds = new Set(serverMessagesWithPreviewHandoff.map((message) => message.id));
     const pendingMessages = optimisticUserMessages.filter((message) => !serverIds.has(message.id));
     if (pendingMessages.length === 0) {
-      return serverMessagesWithPreviewHandoff;
+      return serverMessagesWithPreviewHandoff.map(sanitizeManagerAssistantMessage);
     }
-    return [...serverMessagesWithPreviewHandoff, ...pendingMessages];
-  }, [serverMessages, attachmentPreviewHandoffByMessageId, optimisticUserMessages]);
+    return [
+      ...serverMessagesWithPreviewHandoff.map(sanitizeManagerAssistantMessage),
+      ...pendingMessages,
+    ];
+  }, [
+    serverMessages,
+    attachmentPreviewHandoffByMessageId,
+    optimisticUserMessages,
+    sanitizeManagerAssistantMessage,
+  ]);
   const timelineEntries = useMemo(
     () =>
       deriveTimelineEntries(timelineMessages, activeThread?.proposedPlans ?? [], workLogEntries),
@@ -4095,6 +4135,17 @@ export default function ChatView({ threadId }: ChatViewProps) {
               onTouchEnd={onMessagesTouchEnd}
               onTouchCancel={onMessagesTouchEnd}
             >
+              <ManagerThreadPanel
+                activeThread={activeThread}
+                activeProject={activeProject}
+                projectThreads={projectThreads}
+                onOpenThread={(nextThreadId) => {
+                  void navigate({
+                    to: "/$threadId",
+                    params: { threadId: nextThreadId },
+                  });
+                }}
+              />
               <MessagesTimeline
                 key={activeThread.id}
                 hasMessages={timelineEntries.length > 0}
