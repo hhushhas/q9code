@@ -39,6 +39,7 @@ import { estimateTimelineMessageHeight } from "./timelineHeight";
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
 
 const THREAD_ID = "thread-browser-test" as ThreadId;
+const MANAGER_WORKER_THREAD_ID = "thread-browser-test-worker" as ThreadId;
 const UUID_ROUTE_RE = /^\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const PROJECT_ID = "project-1" as ProjectId;
 const NOW_ISO = "2026-03-04T12:00:00.000Z";
@@ -620,6 +621,71 @@ function createSnapshotWithPlanFollowUpPrompt(): OrchestrationReadModel {
           })
         : thread,
     ),
+  };
+}
+
+function createSnapshotWithManagerThread(): OrchestrationReadModel {
+  const snapshot = createSnapshotForTargetUser({
+    targetMessageId: "msg-user-manager-target" as MessageId,
+    targetText: "manager thread",
+  });
+  const baseThread = snapshot.threads[0];
+  if (!baseThread) {
+    return snapshot;
+  }
+
+  return {
+    ...snapshot,
+    threads: [
+      Object.assign({}, baseThread, {
+        title: "Project manager",
+        role: "manager" as const,
+        managerThreadId: null,
+        managerScratchpad: {
+          folderPath: "/repo/project/scratchpad/managers/project",
+          sessionLogPath:
+            "/repo/project/scratchpad/managers/project/manager-session-log-2026-04-08.md",
+        },
+        activities: [
+          {
+            id: EventId.makeUnsafe("activity-manager-worker-completed"),
+            tone: "info" as const,
+            kind: "manager.worker.completed",
+            summary: 'Worker "Reconnect patch" completed',
+            payload: {
+              workerThreadId: MANAGER_WORKER_THREAD_ID,
+              workerTitle: "Reconnect patch",
+            },
+            turnId: null,
+            sequence: 1,
+            createdAt: isoAt(1_000),
+          },
+        ],
+        updatedAt: isoAt(1_000),
+      }),
+      {
+        ...baseThread,
+        id: MANAGER_WORKER_THREAD_ID,
+        title: "Reconnect patch",
+        role: "worker" as const,
+        managerThreadId: THREAD_ID,
+        managerScratchpad: null,
+        messages: [
+          createUserMessage({
+            id: "msg-user-manager-worker" as MessageId,
+            text: "Patch the reconnect flow and verify it.",
+            offsetSeconds: 1_005,
+          }),
+          createAssistantMessage({
+            id: "msg-assistant-manager-worker" as MessageId,
+            text: "Reconnect flow patched and verified.",
+            offsetSeconds: 1_006,
+          }),
+        ],
+        activities: [],
+        updatedAt: isoAt(1_006),
+      },
+    ],
   };
 }
 
@@ -1335,6 +1401,24 @@ describe("ChatView timeline estimator parity (full app)", () => {
 
     try {
       await expect.element(page.getByText("No threads yet")).toBeInTheDocument();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("renders manager threads without entering a React update loop", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotWithManagerThread(),
+    });
+
+    try {
+      await expect
+        .element(page.getByRole("heading", { name: "Project manager" }))
+        .toBeInTheDocument();
+      await expect
+        .element(page.getByRole("button", { name: "Delegate worker" }))
+        .toBeInTheDocument();
     } finally {
       await mounted.cleanup();
     }

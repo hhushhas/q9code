@@ -30,6 +30,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useQuery } from "@tanstack/react-query";
 import { useDebouncedValue } from "@tanstack/react-pacer";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useShallow } from "zustand/react/shallow";
 import { gitStatusQueryOptions } from "~/lib/gitReactQuery";
 import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
 import { providerSkillsQueryOptions } from "~/lib/providerReactQuery";
@@ -912,10 +913,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
   }, [activeThreadId, existingOpenTerminalThreadIds, terminalState.terminalOpen]);
   const latestTurnSettled = isLatestTurnSettled(activeLatestTurn, activeThread?.session ?? null);
   const activeProject = useProjectById(activeThread?.projectId);
-  const projectThreads = useStore((store) =>
-    activeThread
-      ? store.threads.filter((thread) => thread.projectId === activeThread.projectId)
-      : [],
+  const projectThreads = useStore(
+    useShallow((store) =>
+      activeThread
+        ? store.threads.filter((thread) => thread.projectId === activeThread.projectId)
+        : [],
+    ),
   );
 
   const openPullRequestDialog = useCallback(
