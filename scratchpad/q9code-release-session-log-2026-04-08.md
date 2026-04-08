@@ -1,0 +1,1 @@
+2026-04-08 08:45:26 +0500 | Started a new Q9 release packaging pass after another logo update, confirming the current scope is limited to regenerated production branding assets for desktop, web, and marketing surfaces so the new installer can be built and shipped without touching unrelated in-progress code changes.
