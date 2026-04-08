@@ -10,3 +10,4 @@
   2026-04-08 17:12:58 +0500 | User reported delivered DMG would not open. Starting fresh rebuild with actual mount/openability validation and fresh Downloads handoff.
   2026-04-08 17:14:59 +0500 | Rebuilt DMG and validated openability by mounting both the release artifact and the copied Downloads artifact. Fresh handoff path: /Users/macmini/Downloads/Q9-Code-0.0.15-arm64-2026-04-08-1714.dmg.
   2026-04-08 19:57:55 +0500 | Enforced manager coordinator defaults after user feedback: managers now stay on gpt-5.4 with default interaction mode only, worker launches use gpt-5-codex, and manager plan-mode access is blocked in the UI and server-side invariants. Full gate passed again.
+  2026-04-08 21:05:52 +0500 | Drafted manager-first vision + compact product spec in docs/manager-project-spec.md, including role model, memory model, UI layout, delegation flow, and acceptance criteria for iteration with Hasan.
