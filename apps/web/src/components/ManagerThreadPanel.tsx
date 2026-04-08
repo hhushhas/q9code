@@ -1,4 +1,5 @@
 import { ThreadId } from "@t3tools/contracts";
+import { MANAGER_WORKER_MODEL_SELECTION } from "@t3tools/shared/manager";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { ArrowUpRightIcon, BotIcon, FileTextIcon, FolderOpenIcon, PlusIcon } from "lucide-react";
 import { useCallback, useMemo, useState, type FormEvent } from "react";
@@ -142,7 +143,7 @@ export function ManagerThreadPanel({
           threadId: workerThreadId,
           projectId: activeProject.id,
           title,
-          modelSelection: managerThread.modelSelection,
+          modelSelection: MANAGER_WORKER_MODEL_SELECTION,
           role: "worker",
           managerThreadId: managerThread.id,
           runtimeMode: managerThread.runtimeMode,
@@ -161,7 +162,7 @@ export function ManagerThreadPanel({
             text: prompt,
             attachments: [],
           },
-          modelSelection: managerThread.modelSelection,
+          modelSelection: MANAGER_WORKER_MODEL_SELECTION,
           titleSeed: title,
           runtimeMode: managerThread.runtimeMode,
           interactionMode: "default",

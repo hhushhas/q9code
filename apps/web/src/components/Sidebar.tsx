@@ -49,7 +49,11 @@ import {
   ThreadId,
   type GitStatusResult,
 } from "@t3tools/contracts";
-import { MANAGER_THREAD_TITLE } from "@t3tools/shared/manager";
+import {
+  MANAGER_INTERACTION_MODE,
+  MANAGER_MODEL_SELECTION,
+  MANAGER_THREAD_TITLE,
+} from "@t3tools/shared/manager";
 import { useQueries } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import {
@@ -865,6 +869,19 @@ export default function Sidebar() {
             thread !== undefined && thread.role === "manager",
         );
       if (existingManagerThread) {
+        try {
+          if (existingManagerThread.interactionMode !== MANAGER_INTERACTION_MODE) {
+            await api.orchestration.dispatchCommand({
+              type: "thread.interaction-mode.set",
+              commandId: newCommandId(),
+              threadId: existingManagerThread.id,
+              interactionMode: MANAGER_INTERACTION_MODE,
+              createdAt: new Date().toISOString(),
+            });
+          }
+        } catch {
+          // Best-effort normalization for pre-existing manager threads.
+        }
         if (selectedThreadIds.size > 0) {
           clearSelection();
         }
@@ -884,13 +901,10 @@ export default function Sidebar() {
           threadId,
           projectId: project.id,
           title: MANAGER_THREAD_TITLE,
-          modelSelection: project.defaultModelSelection ?? {
-            provider: "codex",
-            model: DEFAULT_MODEL_BY_PROVIDER.codex,
-          },
+          modelSelection: MANAGER_MODEL_SELECTION,
           role: "manager",
           runtimeMode: "full-access",
-          interactionMode: "plan",
+          interactionMode: MANAGER_INTERACTION_MODE,
           branch: null,
           worktreePath: null,
           createdAt: new Date().toISOString(),

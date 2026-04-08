@@ -369,6 +369,11 @@ describe("ProviderCommandReactor", () => {
     await waitFor(() => harness.sendTurn.mock.calls.length === 1);
     expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
       threadId: ThreadId.makeUnsafe("thread-manager"),
+      interactionMode: "default",
+      modelSelection: {
+        provider: "codex",
+        model: "gpt-5.4",
+      },
     });
     const managerTurn = harness.sendTurn.mock.calls[0]?.[0] as { input?: string } | undefined;
     expect(managerTurn?.input).toContain("You are the project manager");

@@ -196,6 +196,10 @@ describe("ManagerThreadReactor", () => {
     );
     expect(workers).toHaveLength(1);
     expect(workers[0]?.title).toBe("Reconnect patch");
+    expect(workers[0]?.modelSelection).toEqual({
+      provider: "codex",
+      model: "gpt-5-codex",
+    });
 
     const logPath = path.join(
       harness.workspaceRoot,

@@ -1,5 +1,9 @@
 import { CommandId, type ModelSelection, ProjectId, ThreadId } from "@t3tools/contracts";
-import { MANAGER_THREAD_TITLE } from "@t3tools/shared/manager";
+import {
+  MANAGER_INTERACTION_MODE,
+  MANAGER_MODEL_SELECTION,
+  MANAGER_THREAD_TITLE,
+} from "@t3tools/shared/manager";
 import {
   Data,
   Deferred,
@@ -196,9 +200,9 @@ const autoBootstrapWelcome = Effect.gen(function* () {
           threadId: createdThreadId,
           projectId: nextProjectId,
           title: MANAGER_THREAD_TITLE,
-          modelSelection: nextProjectDefaultModelSelection,
+          modelSelection: MANAGER_MODEL_SELECTION,
           role: "manager",
-          interactionMode: "plan",
+          interactionMode: MANAGER_INTERACTION_MODE,
           runtimeMode: "full-access",
           branch: null,
           worktreePath: null,

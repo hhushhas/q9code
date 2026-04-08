@@ -7,7 +7,11 @@ import {
   type OrchestrationThread,
 } from "@t3tools/contracts";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
-import { extractManagerDelegation, stripManagerDelegation } from "@t3tools/shared/manager";
+import {
+  extractManagerDelegation,
+  MANAGER_WORKER_MODEL_SELECTION,
+  stripManagerDelegation,
+} from "@t3tools/shared/manager";
 import { Effect, FileSystem, Layer, Path, Stream } from "effect";
 
 import {
@@ -152,7 +156,7 @@ const make = Effect.gen(function* () {
         threadId: workerThreadId,
         projectId: input.managerThread.projectId,
         title: worker.title,
-        modelSelection: input.managerThread.modelSelection,
+        modelSelection: MANAGER_WORKER_MODEL_SELECTION,
         role: "worker",
         managerThreadId: input.managerThread.id,
         runtimeMode: input.managerThread.runtimeMode,
@@ -174,7 +178,7 @@ const make = Effect.gen(function* () {
           text: worker.prompt,
           attachments: [],
         },
-        modelSelection: input.managerThread.modelSelection,
+        modelSelection: MANAGER_WORKER_MODEL_SELECTION,
         titleSeed: worker.title,
         runtimeMode: input.managerThread.runtimeMode,
         interactionMode: "default",

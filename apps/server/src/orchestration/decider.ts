@@ -3,6 +3,7 @@ import type {
   OrchestrationEvent,
   OrchestrationReadModel,
 } from "@t3tools/contracts";
+import { MANAGER_INTERACTION_MODE, MANAGER_MODEL_SELECTION } from "@t3tools/shared/manager";
 import { Effect } from "effect";
 
 import { OrchestrationCommandInvariantError } from "./Errors.ts";
@@ -151,6 +152,9 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       });
       const role = command.role ?? "worker";
       const managerThreadId = command.managerThreadId ?? null;
+      const modelSelection = role === "manager" ? MANAGER_MODEL_SELECTION : command.modelSelection;
+      const interactionMode =
+        role === "manager" ? MANAGER_INTERACTION_MODE : command.interactionMode;
 
       if (role === "manager") {
         if (managerThreadId !== null) {
@@ -213,12 +217,12 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           threadId: command.threadId,
           projectId: command.projectId,
           title: command.title,
-          modelSelection: command.modelSelection,
+          modelSelection,
           ...(role !== "worker" ? { role } : {}),
           ...(managerThreadId !== null ? { managerThreadId } : {}),
           ...(managerScratchpad !== null ? { managerScratchpad } : {}),
           runtimeMode: command.runtimeMode,
-          interactionMode: command.interactionMode,
+          interactionMode,
           branch: command.branch,
           worktreePath: command.worktreePath,
           createdAt: command.createdAt,
@@ -295,12 +299,18 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
     }
 
     case "thread.meta.update": {
-      yield* requireThread({
+      const thread = yield* requireThread({
         readModel,
         command,
         threadId: command.threadId,
       });
       const occurredAt = nowIso();
+      const modelSelection =
+        command.modelSelection === undefined
+          ? undefined
+          : (thread.role ?? "worker") === "manager"
+            ? MANAGER_MODEL_SELECTION
+            : command.modelSelection;
       return {
         ...withEventBase({
           aggregateKind: "thread",
@@ -312,9 +322,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         payload: {
           threadId: command.threadId,
           ...(command.title !== undefined ? { title: command.title } : {}),
-          ...(command.modelSelection !== undefined
-            ? { modelSelection: command.modelSelection }
-            : {}),
+          ...(modelSelection !== undefined ? { modelSelection } : {}),
           ...(command.branch !== undefined ? { branch: command.branch } : {}),
           ...(command.worktreePath !== undefined ? { worktreePath: command.worktreePath } : {}),
           updatedAt: occurredAt,
@@ -346,12 +354,16 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
     }
 
     case "thread.interaction-mode.set": {
-      yield* requireThread({
+      const thread = yield* requireThread({
         readModel,
         command,
         threadId: command.threadId,
       });
       const occurredAt = nowIso();
+      const interactionMode =
+        (thread.role ?? "worker") === "manager"
+          ? MANAGER_INTERACTION_MODE
+          : command.interactionMode;
       return {
         ...withEventBase({
           aggregateKind: "thread",
@@ -362,7 +374,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         type: "thread.interaction-mode-set",
         payload: {
           threadId: command.threadId,
-          interactionMode: command.interactionMode,
+          interactionMode,
           updatedAt: occurredAt,
         },
       };
@@ -431,12 +443,17 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           threadId: command.threadId,
           messageId: command.message.messageId,
           ...(command.message.skills !== undefined ? { skills: command.message.skills } : {}),
-          ...(command.modelSelection !== undefined
-            ? { modelSelection: command.modelSelection }
-            : {}),
+          ...((targetThread.role ?? "worker") === "manager"
+            ? { modelSelection: MANAGER_MODEL_SELECTION }
+            : command.modelSelection !== undefined
+              ? { modelSelection: command.modelSelection }
+              : {}),
           ...(command.titleSeed !== undefined ? { titleSeed: command.titleSeed } : {}),
           runtimeMode: targetThread.runtimeMode,
-          interactionMode: targetThread.interactionMode,
+          interactionMode:
+            (targetThread.role ?? "worker") === "manager"
+              ? MANAGER_INTERACTION_MODE
+              : targetThread.interactionMode,
           ...(sourceProposedPlan !== undefined ? { sourceProposedPlan } : {}),
           createdAt: command.createdAt,
         },

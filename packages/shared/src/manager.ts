@@ -1,7 +1,18 @@
+import type { ModelSelection, ProviderInteractionMode } from "@t3tools/contracts";
+
 export const MANAGER_THREAD_TITLE = "Project manager";
 export const MANAGER_DELEGATION_TAG = "manager_delegation";
 export const MANAGER_DELEGATION_OPEN_TAG = `<${MANAGER_DELEGATION_TAG}>`;
 export const MANAGER_DELEGATION_CLOSE_TAG = `</${MANAGER_DELEGATION_TAG}>`;
+export const MANAGER_MODEL_SELECTION = {
+  provider: "codex",
+  model: "gpt-5.4",
+} as const satisfies ModelSelection;
+export const MANAGER_WORKER_MODEL_SELECTION = {
+  provider: "codex",
+  model: "gpt-5-codex",
+} as const satisfies ModelSelection;
+export const MANAGER_INTERACTION_MODE = "default" as const satisfies ProviderInteractionMode;
 
 const MANAGER_DELEGATION_BLOCK_RE = new RegExp(
   `${MANAGER_DELEGATION_OPEN_TAG}\\s*([\\s\\S]*?)\\s*${MANAGER_DELEGATION_CLOSE_TAG}`,
