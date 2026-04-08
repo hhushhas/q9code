@@ -20,7 +20,12 @@ import {
   sortThreadsForSidebar,
   THREAD_JUMP_HINT_SHOW_DELAY_MS,
 } from "./Sidebar.logic";
-import { OrchestrationLatestTurn, ProjectId, ThreadId } from "@t3tools/contracts";
+import {
+  DEFAULT_THREAD_ROLE,
+  OrchestrationLatestTurn,
+  ProjectId,
+  ThreadId,
+} from "@t3tools/contracts";
 import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
@@ -650,6 +655,9 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
       model: "gpt-5.4",
       ...overrides?.modelSelection,
     },
+    role: DEFAULT_THREAD_ROLE,
+    managerThreadId: null,
+    managerScratchpad: null,
     runtimeMode: DEFAULT_RUNTIME_MODE,
     interactionMode: DEFAULT_INTERACTION_MODE,
     session: null,
@@ -791,6 +799,29 @@ describe("sortThreadsForSidebar", () => {
     expect(sorted.map((thread) => thread.id)).toEqual([
       ThreadId.makeUnsafe("thread-1"),
       ThreadId.makeUnsafe("thread-2"),
+    ]);
+  });
+
+  it("keeps manager threads pinned ahead of workers", () => {
+    const sorted = sortThreadsForSidebar(
+      [
+        makeThread({
+          id: ThreadId.makeUnsafe("thread-worker"),
+          role: "worker",
+          updatedAt: "2026-03-09T10:30:00.000Z",
+        }),
+        makeThread({
+          id: ThreadId.makeUnsafe("thread-manager"),
+          role: "manager",
+          updatedAt: "2026-03-09T10:00:00.000Z",
+        }),
+      ],
+      "updated_at",
+    );
+
+    expect(sorted.map((thread) => thread.id)).toEqual([
+      ThreadId.makeUnsafe("thread-manager"),
+      ThreadId.makeUnsafe("thread-worker"),
     ]);
   });
 });

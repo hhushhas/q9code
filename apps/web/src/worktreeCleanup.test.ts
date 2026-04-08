@@ -1,4 +1,4 @@
-import { ProjectId, ThreadId } from "@t3tools/contracts";
+import { DEFAULT_THREAD_ROLE, ProjectId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE, type Thread } from "./types";
@@ -14,6 +14,9 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
       provider: "codex",
       model: "gpt-5.3-codex",
     },
+    role: DEFAULT_THREAD_ROLE,
+    managerThreadId: null,
+    managerScratchpad: null,
     runtimeMode: DEFAULT_RUNTIME_MODE,
     interactionMode: DEFAULT_INTERACTION_MODE,
     session: null,
@@ -83,16 +86,16 @@ describe("getOrphanedWorktreePathForThread", () => {
 describe("formatWorktreePathForDisplay", () => {
   it("shows only the last path segment for unix-like paths", () => {
     const result = formatWorktreePathForDisplay(
-      "/Users/julius/.t3/worktrees/t3code-mvp/t3code-4e609bb8",
+      "/Users/julius/.t3/worktrees/q9code-mvp/q9code-4e609bb8",
     );
-    expect(result).toBe("t3code-4e609bb8");
+    expect(result).toBe("q9code-4e609bb8");
   });
 
   it("normalizes windows separators before selecting the final segment", () => {
     const result = formatWorktreePathForDisplay(
-      "C:\\Users\\julius\\.t3\\worktrees\\t3code-mvp\\t3code-4e609bb8",
+      "C:\\Users\\julius\\.t3\\worktrees\\q9code-mvp\\q9code-4e609bb8",
     );
-    expect(result).toBe("t3code-4e609bb8");
+    expect(result).toBe("q9code-4e609bb8");
   });
 
   it("uses the final segment even when outside ~/.t3/worktrees", () => {

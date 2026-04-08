@@ -80,6 +80,13 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
           provider: "claudeAgent",
           model: "claude-opus-4-6",
         },
+        role: "manager",
+        managerThreadId: null,
+        managerScratchpad: {
+          folderPath: "/tmp/project-null-options/scratchpad/managers/project-null-options",
+          sessionLogPath:
+            "/tmp/project-null-options/scratchpad/managers/project-null-options/manager-session-log.md",
+        },
         runtimeMode: "full-access",
         interactionMode: "default",
         branch: null,
@@ -93,8 +100,15 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
 
       const rows = yield* sql<{
         readonly modelSelection: string | null;
+        readonly role: string;
+        readonly managerThreadId: string | null;
+        readonly managerScratchpadFolderPath: string | null;
       }>`
-        SELECT model_selection_json AS "modelSelection"
+        SELECT
+          model_selection_json AS "modelSelection",
+          role,
+          manager_thread_id AS "managerThreadId",
+          manager_scratchpad_folder_path AS "managerScratchpadFolderPath"
         FROM projection_threads
         WHERE thread_id = 'thread-null-options'
       `;
@@ -110,6 +124,12 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
           model: "claude-opus-4-6",
         }),
       );
+      assert.strictEqual(row.role, "manager");
+      assert.strictEqual(row.managerThreadId, null);
+      assert.strictEqual(
+        row.managerScratchpadFolderPath,
+        "/tmp/project-null-options/scratchpad/managers/project-null-options",
+      );
 
       const persisted = yield* threads.getById({
         threadId: ThreadId.makeUnsafe("thread-null-options"),
@@ -117,6 +137,11 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
       assert.deepStrictEqual(Option.getOrNull(persisted)?.modelSelection, {
         provider: "claudeAgent",
         model: "claude-opus-4-6",
+      });
+      assert.deepStrictEqual(Option.getOrNull(persisted)?.managerScratchpad, {
+        folderPath: "/tmp/project-null-options/scratchpad/managers/project-null-options",
+        sessionLogPath:
+          "/tmp/project-null-options/scratchpad/managers/project-null-options/manager-session-log.md",
       });
     }),
   );

@@ -255,6 +255,13 @@ export function projectEvent(
             projectId: payload.projectId,
             title: payload.title,
             modelSelection: payload.modelSelection,
+            ...(payload.role !== undefined ? { role: payload.role } : {}),
+            ...(payload.managerThreadId !== undefined
+              ? { managerThreadId: payload.managerThreadId }
+              : {}),
+            ...(payload.managerScratchpad !== undefined
+              ? { managerScratchpad: payload.managerScratchpad }
+              : {}),
             runtimeMode: payload.runtimeMode,
             interactionMode: payload.interactionMode,
             branch: payload.branch,

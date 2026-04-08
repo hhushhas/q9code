@@ -1,4 +1,5 @@
 import {
+  DEFAULT_THREAD_ROLE,
   type OrchestrationEvent,
   type OrchestrationMessage,
   type OrchestrationProposedPlan,
@@ -161,6 +162,9 @@ function mapThread(thread: OrchestrationThread): Thread {
     projectId: thread.projectId,
     title: thread.title,
     modelSelection: normalizeModelSelection(thread.modelSelection),
+    role: thread.role ?? DEFAULT_THREAD_ROLE,
+    managerThreadId: thread.managerThreadId ?? null,
+    managerScratchpad: thread.managerScratchpad ?? null,
     runtimeMode: thread.runtimeMode,
     interactionMode: thread.interactionMode,
     session: thread.session ? mapSession(thread.session) : null,
@@ -215,6 +219,8 @@ function buildSidebarThreadSummary(thread: Thread): SidebarThreadSummary {
     id: thread.id,
     projectId: thread.projectId,
     title: thread.title,
+    role: thread.role,
+    managerThreadId: thread.managerThreadId,
     interactionMode: thread.interactionMode,
     session: thread.session,
     createdAt: thread.createdAt,
@@ -241,6 +247,8 @@ function sidebarThreadSummariesEqual(
     left.id === right.id &&
     left.projectId === right.projectId &&
     left.title === right.title &&
+    left.role === right.role &&
+    left.managerThreadId === right.managerThreadId &&
     left.interactionMode === right.interactionMode &&
     left.session === right.session &&
     left.createdAt === right.createdAt &&
@@ -649,6 +657,9 @@ export function applyOrchestrationEvent(state: AppState, event: OrchestrationEve
         projectId: event.payload.projectId,
         title: event.payload.title,
         modelSelection: event.payload.modelSelection,
+        role: event.payload.role ?? DEFAULT_THREAD_ROLE,
+        managerThreadId: event.payload.managerThreadId ?? null,
+        managerScratchpad: event.payload.managerScratchpad ?? null,
         runtimeMode: event.payload.runtimeMode,
         interactionMode: event.payload.interactionMode,
         branch: event.payload.branch,

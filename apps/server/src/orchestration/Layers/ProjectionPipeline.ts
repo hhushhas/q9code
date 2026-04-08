@@ -1,5 +1,6 @@
 import {
   ApprovalRequestId,
+  DEFAULT_THREAD_ROLE,
   type ChatAttachment,
   type OrchestrationEvent,
 } from "@t3tools/contracts";
@@ -442,6 +443,9 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             projectId: event.payload.projectId,
             title: event.payload.title,
             modelSelection: event.payload.modelSelection,
+            role: event.payload.role ?? DEFAULT_THREAD_ROLE,
+            managerThreadId: event.payload.managerThreadId ?? null,
+            managerScratchpad: event.payload.managerScratchpad ?? null,
             runtimeMode: event.payload.runtimeMode,
             interactionMode: event.payload.interactionMode,
             branch: event.payload.branch,

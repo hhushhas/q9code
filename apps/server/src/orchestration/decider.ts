@@ -8,12 +8,15 @@ import { Effect } from "effect";
 import { OrchestrationCommandInvariantError } from "./Errors.ts";
 import {
   requireProject,
+  findThreadById,
+  listThreadsByProjectId,
   requireProjectAbsent,
   requireThread,
   requireThreadArchived,
   requireThreadAbsent,
   requireThreadNotArchived,
 } from "./commandInvariants.ts";
+import { buildManagerScratchpad } from "./managerScratchpad.ts";
 
 const nowIso = () => new Date().toISOString();
 const defaultMetadata: Omit<OrchestrationEvent, "sequence" | "type" | "payload"> = {
@@ -136,7 +139,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
     }
 
     case "thread.create": {
-      yield* requireProject({
+      const project = yield* requireProject({
         readModel,
         command,
         projectId: command.projectId,
@@ -146,6 +149,58 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         command,
         threadId: command.threadId,
       });
+      const role = command.role ?? "worker";
+      const managerThreadId = command.managerThreadId ?? null;
+
+      if (role === "manager") {
+        if (managerThreadId !== null) {
+          return yield* new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail: "Manager threads cannot reference another manager thread.",
+          });
+        }
+
+        const existingManager = listThreadsByProjectId(readModel, command.projectId).find(
+          (thread) => thread.deletedAt === null && (thread.role ?? "worker") === "manager",
+        );
+        if (existingManager) {
+          return yield* new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail: `Project '${command.projectId}' already has manager thread '${existingManager.id}'.`,
+          });
+        }
+      }
+
+      if (role !== "manager" && managerThreadId !== null) {
+        const managerThread = findThreadById(readModel, managerThreadId);
+        if (!managerThread || managerThread.deletedAt !== null) {
+          return yield* new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail: `Manager thread '${managerThreadId}' does not exist.`,
+          });
+        }
+        if (managerThread.projectId !== command.projectId) {
+          return yield* new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail: `Manager thread '${managerThreadId}' must belong to project '${command.projectId}'.`,
+          });
+        }
+        if ((managerThread.role ?? "worker") !== "manager") {
+          return yield* new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail: `Thread '${managerThreadId}' is not a manager thread.`,
+          });
+        }
+      }
+
+      const managerScratchpad =
+        role === "manager"
+          ? buildManagerScratchpad({
+              workspaceRoot: project.workspaceRoot,
+              projectTitle: project.title,
+            })
+          : null;
+
       return {
         ...withEventBase({
           aggregateKind: "thread",
@@ -159,6 +214,9 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           projectId: command.projectId,
           title: command.title,
           modelSelection: command.modelSelection,
+          ...(role !== "worker" ? { role } : {}),
+          ...(managerThreadId !== null ? { managerThreadId } : {}),
+          ...(managerScratchpad !== null ? { managerScratchpad } : {}),
           runtimeMode: command.runtimeMode,
           interactionMode: command.interactionMode,
           branch: command.branch,

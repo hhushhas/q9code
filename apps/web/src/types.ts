@@ -1,12 +1,14 @@
 import type {
   ModelSelection,
   OrchestrationLatestTurn,
+  OrchestrationThreadManagerScratchpad,
   OrchestrationProposedPlanId,
   OrchestrationSessionStatus,
   OrchestrationThreadActivity,
   ProjectScript as ContractProjectScript,
   ThreadId,
   ProjectId,
+  ThreadRole,
   TurnId,
   MessageId,
   ProviderKind,
@@ -94,6 +96,9 @@ export interface Thread {
   projectId: ProjectId;
   title: string;
   modelSelection: ModelSelection;
+  role: ThreadRole;
+  managerThreadId: ThreadId | null;
+  managerScratchpad: OrchestrationThreadManagerScratchpad | null;
   runtimeMode: RuntimeMode;
   interactionMode: ProviderInteractionMode;
   session: ThreadSession | null;
@@ -115,6 +120,8 @@ export interface SidebarThreadSummary {
   id: ThreadId;
   projectId: ProjectId;
   title: string;
+  role: ThreadRole;
+  managerThreadId: ThreadId | null;
   interactionMode: ProviderInteractionMode;
   session: ThreadSession | null;
   createdAt: string;

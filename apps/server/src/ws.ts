@@ -261,6 +261,12 @@ const WsRpcLayer = WsRpcGroup.toLayer(
               projectId: bootstrap.createThread.projectId,
               title: bootstrap.createThread.title,
               modelSelection: bootstrap.createThread.modelSelection,
+              ...(bootstrap.createThread.role !== undefined
+                ? { role: bootstrap.createThread.role }
+                : {}),
+              ...(bootstrap.createThread.managerThreadId !== undefined
+                ? { managerThreadId: bootstrap.createThread.managerThreadId }
+                : {}),
               runtimeMode: bootstrap.createThread.runtimeMode,
               interactionMode: bootstrap.createThread.interactionMode,
               branch: bootstrap.createThread.branch,

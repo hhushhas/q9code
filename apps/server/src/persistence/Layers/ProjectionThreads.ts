@@ -1,6 +1,7 @@
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 import { Effect, Layer, Schema, Struct } from "effect";
+import { ModelSelection, OrchestrationThreadManagerScratchpad } from "@t3tools/contracts";
 
 import { toPersistenceSqlError } from "../Errors.ts";
 import {
@@ -11,11 +12,11 @@ import {
   ProjectionThreadRepository,
   type ProjectionThreadRepositoryShape,
 } from "../Services/ProjectionThreads.ts";
-import { ModelSelection } from "@t3tools/contracts";
 
 const ProjectionThreadDbRow = ProjectionThread.mapFields(
   Struct.assign({
     modelSelection: Schema.fromJsonString(ModelSelection),
+    managerScratchpad: Schema.NullOr(Schema.fromJsonString(OrchestrationThreadManagerScratchpad)),
   }),
 );
 type ProjectionThreadDbRow = typeof ProjectionThreadDbRow.Type;
@@ -32,6 +33,10 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           project_id,
           title,
           model_selection_json,
+          role,
+          manager_thread_id,
+          manager_scratchpad_folder_path,
+          manager_session_log_path,
           runtime_mode,
           interaction_mode,
           branch,
@@ -47,6 +52,10 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           ${row.projectId},
           ${row.title},
           ${JSON.stringify(row.modelSelection)},
+          ${row.role},
+          ${row.managerThreadId},
+          ${row.managerScratchpad?.folderPath ?? null},
+          ${row.managerScratchpad?.sessionLogPath ?? null},
           ${row.runtimeMode},
           ${row.interactionMode},
           ${row.branch},
@@ -62,6 +71,10 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           project_id = excluded.project_id,
           title = excluded.title,
           model_selection_json = excluded.model_selection_json,
+          role = excluded.role,
+          manager_thread_id = excluded.manager_thread_id,
+          manager_scratchpad_folder_path = excluded.manager_scratchpad_folder_path,
+          manager_session_log_path = excluded.manager_session_log_path,
           runtime_mode = excluded.runtime_mode,
           interaction_mode = excluded.interaction_mode,
           branch = excluded.branch,
@@ -84,6 +97,15 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           project_id AS "projectId",
           title,
           model_selection_json AS "modelSelection",
+          role,
+          manager_thread_id AS "managerThreadId",
+          CASE
+            WHEN manager_scratchpad_folder_path IS NULL OR manager_session_log_path IS NULL THEN NULL
+            ELSE json_object(
+              'folderPath', manager_scratchpad_folder_path,
+              'sessionLogPath', manager_session_log_path
+            )
+          END AS "managerScratchpad",
           runtime_mode AS "runtimeMode",
           interaction_mode AS "interactionMode",
           branch,
@@ -108,6 +130,15 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           project_id AS "projectId",
           title,
           model_selection_json AS "modelSelection",
+          role,
+          manager_thread_id AS "managerThreadId",
+          CASE
+            WHEN manager_scratchpad_folder_path IS NULL OR manager_session_log_path IS NULL THEN NULL
+            ELSE json_object(
+              'folderPath', manager_scratchpad_folder_path,
+              'sessionLogPath', manager_session_log_path
+            )
+          END AS "managerScratchpad",
           runtime_mode AS "runtimeMode",
           interaction_mode AS "interactionMode",
           branch,

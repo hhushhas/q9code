@@ -1,9 +1,11 @@
 import {
   ChatAttachment,
+  DEFAULT_THREAD_ROLE,
   IsoDateTime,
   MessageId,
   NonNegativeInt,
   OrchestrationCheckpointFile,
+  OrchestrationThreadManagerScratchpad,
   OrchestrationProposedPlanId,
   OrchestrationReadModel,
   ProjectScript,
@@ -63,6 +65,7 @@ const ProjectionThreadProposedPlanDbRowSchema = ProjectionThreadProposedPlan;
 const ProjectionThreadDbRowSchema = ProjectionThread.mapFields(
   Struct.assign({
     modelSelection: Schema.fromJsonString(ModelSelection),
+    managerScratchpad: Schema.NullOr(Schema.fromJsonString(OrchestrationThreadManagerScratchpad)),
   }),
 );
 const ProjectionThreadActivityDbRowSchema = ProjectionThreadActivity.mapFields(
@@ -193,6 +196,15 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           project_id AS "projectId",
           title,
           model_selection_json AS "modelSelection",
+          role,
+          manager_thread_id AS "managerThreadId",
+          CASE
+            WHEN manager_scratchpad_folder_path IS NULL OR manager_session_log_path IS NULL THEN NULL
+            ELSE json_object(
+              'folderPath', manager_scratchpad_folder_path,
+              'sessionLogPath', manager_session_log_path
+            )
+          END AS "managerScratchpad",
           runtime_mode AS "runtimeMode",
           interaction_mode AS "interactionMode",
           branch,
@@ -663,26 +675,40 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             deletedAt: row.deletedAt,
           }));
 
-          const threads: ReadonlyArray<OrchestrationThread> = threadRows.map((row) => ({
-            id: row.threadId,
-            projectId: row.projectId,
-            title: row.title,
-            modelSelection: row.modelSelection,
-            runtimeMode: row.runtimeMode,
-            interactionMode: row.interactionMode,
-            branch: row.branch,
-            worktreePath: row.worktreePath,
-            latestTurn: latestTurnByThread.get(row.threadId) ?? null,
-            createdAt: row.createdAt,
-            updatedAt: row.updatedAt,
-            archivedAt: row.archivedAt,
-            deletedAt: row.deletedAt,
-            messages: messagesByThread.get(row.threadId) ?? [],
-            proposedPlans: proposedPlansByThread.get(row.threadId) ?? [],
-            activities: activitiesByThread.get(row.threadId) ?? [],
-            checkpoints: checkpointsByThread.get(row.threadId) ?? [],
-            session: sessionsByThread.get(row.threadId) ?? null,
-          }));
+          const threads: ReadonlyArray<OrchestrationThread> = threadRows.map((row) => {
+            const thread = {
+              id: row.threadId,
+              projectId: row.projectId,
+              title: row.title,
+              modelSelection: row.modelSelection,
+              runtimeMode: row.runtimeMode,
+              interactionMode: row.interactionMode,
+              branch: row.branch,
+              worktreePath: row.worktreePath,
+              latestTurn: latestTurnByThread.get(row.threadId) ?? null,
+              createdAt: row.createdAt,
+              updatedAt: row.updatedAt,
+              archivedAt: row.archivedAt,
+              deletedAt: row.deletedAt,
+              messages: messagesByThread.get(row.threadId) ?? [],
+              proposedPlans: proposedPlansByThread.get(row.threadId) ?? [],
+              activities: activitiesByThread.get(row.threadId) ?? [],
+              checkpoints: checkpointsByThread.get(row.threadId) ?? [],
+              session: sessionsByThread.get(row.threadId) ?? null,
+            } satisfies OrchestrationThread;
+
+            if (row.role !== DEFAULT_THREAD_ROLE) {
+              Object.assign(thread, { role: row.role });
+            }
+            if (row.managerThreadId !== null) {
+              Object.assign(thread, { managerThreadId: row.managerThreadId });
+            }
+            if (row.managerScratchpad !== null) {
+              Object.assign(thread, { managerScratchpad: row.managerScratchpad });
+            }
+
+            return thread;
+          });
 
           const snapshot = {
             snapshotSequence: computeSnapshotSequence(stateRows),

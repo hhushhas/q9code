@@ -1,5 +1,6 @@
 import {
   CheckpointRef,
+  DEFAULT_THREAD_ROLE,
   DEFAULT_MODEL_BY_PROVIDER,
   EventId,
   MessageId,
@@ -29,6 +30,9 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
       provider: "codex",
       model: "gpt-5-codex",
     },
+    role: DEFAULT_THREAD_ROLE,
+    managerThreadId: null,
+    managerScratchpad: null,
     runtimeMode: DEFAULT_RUNTIME_MODE,
     interactionMode: DEFAULT_INTERACTION_MODE,
     session: null,
@@ -106,6 +110,9 @@ function makeReadModelThread(overrides: Partial<OrchestrationReadModel["threads"
       provider: "codex",
       model: "gpt-5.3-codex",
     },
+    role: DEFAULT_THREAD_ROLE,
+    managerThreadId: null,
+    managerScratchpad: null,
     runtimeMode: DEFAULT_RUNTIME_MODE,
     interactionMode: DEFAULT_INTERACTION_MODE,
     branch: null,
@@ -217,6 +224,26 @@ describe("store read model sync", () => {
     const next = syncServerReadModel(initialState, readModel);
 
     expect(next.threads[0]?.modelSelection.model).toBe("claude-sonnet-4-6");
+  });
+
+  it("maps manager thread metadata from the read model", () => {
+    const initialState = makeState(makeThread());
+    const readModel = makeReadModel(
+      makeReadModelThread({
+        role: "manager",
+        managerScratchpad: {
+          folderPath: "/tmp/project/scratchpad/managers/project",
+          sessionLogPath: "/tmp/project/scratchpad/managers/project/manager-session-log.md",
+        },
+      }),
+    );
+
+    const next = syncServerReadModel(initialState, readModel);
+
+    expect(next.threads[0]?.role).toBe("manager");
+    expect(next.threads[0]?.managerScratchpad?.sessionLogPath).toBe(
+      "/tmp/project/scratchpad/managers/project/manager-session-log.md",
+    );
   });
 
   it("preserves project and thread updatedAt timestamps from the read model", () => {

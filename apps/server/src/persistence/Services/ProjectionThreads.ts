@@ -9,10 +9,12 @@
 import {
   IsoDateTime,
   ModelSelection,
+  OrchestrationThreadManagerScratchpad,
   ProjectId,
   ProviderInteractionMode,
   RuntimeMode,
   ThreadId,
+  ThreadRole,
   TurnId,
 } from "@t3tools/contracts";
 import { Option, Schema, ServiceMap } from "effect";
@@ -25,6 +27,9 @@ export const ProjectionThread = Schema.Struct({
   projectId: ProjectId,
   title: Schema.String,
   modelSelection: ModelSelection,
+  role: ThreadRole,
+  managerThreadId: Schema.NullOr(ThreadId),
+  managerScratchpad: Schema.NullOr(OrchestrationThreadManagerScratchpad),
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   branch: Schema.NullOr(Schema.String),

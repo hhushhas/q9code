@@ -65,6 +65,9 @@ export const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
 export const ProviderInteractionMode = Schema.Literals(["default", "plan"]);
 export type ProviderInteractionMode = typeof ProviderInteractionMode.Type;
 export const DEFAULT_PROVIDER_INTERACTION_MODE: ProviderInteractionMode = "default";
+export const ThreadRole = Schema.Literals(["manager", "worker"]);
+export type ThreadRole = typeof ThreadRole.Type;
+export const DEFAULT_THREAD_ROLE: ThreadRole = "worker";
 export const ProviderRequestKind = Schema.Literals(["command", "file-read", "file-change"]);
 export type ProviderRequestKind = typeof ProviderRequestKind.Type;
 export const AssistantDeliveryMode = Schema.Literals(["buffered", "streaming"]);
@@ -248,6 +251,12 @@ export const OrchestrationThreadActivity = Schema.Struct({
 });
 export type OrchestrationThreadActivity = typeof OrchestrationThreadActivity.Type;
 
+export const OrchestrationThreadManagerScratchpad = Schema.Struct({
+  folderPath: TrimmedNonEmptyString,
+  sessionLogPath: TrimmedNonEmptyString,
+});
+export type OrchestrationThreadManagerScratchpad = typeof OrchestrationThreadManagerScratchpad.Type;
+
 const OrchestrationLatestTurnState = Schema.Literals([
   "running",
   "interrupted",
@@ -272,6 +281,9 @@ export const OrchestrationThread = Schema.Struct({
   projectId: ProjectId,
   title: TrimmedNonEmptyString,
   modelSelection: ModelSelection,
+  role: Schema.optionalKey(ThreadRole),
+  managerThreadId: Schema.optionalKey(Schema.NullOr(ThreadId)),
+  managerScratchpad: Schema.optionalKey(Schema.NullOr(OrchestrationThreadManagerScratchpad)),
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode.pipe(
     Schema.withDecodingDefault(() => DEFAULT_PROVIDER_INTERACTION_MODE),
@@ -332,6 +344,8 @@ const ThreadCreateCommand = Schema.Struct({
   projectId: ProjectId,
   title: TrimmedNonEmptyString,
   modelSelection: ModelSelection,
+  role: Schema.optionalKey(ThreadRole),
+  managerThreadId: Schema.optionalKey(Schema.NullOr(ThreadId)),
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode.pipe(
     Schema.withDecodingDefault(() => DEFAULT_PROVIDER_INTERACTION_MODE),
@@ -389,6 +403,8 @@ const ThreadTurnStartBootstrapCreateThread = Schema.Struct({
   projectId: ProjectId,
   title: TrimmedNonEmptyString,
   modelSelection: ModelSelection,
+  role: Schema.optionalKey(ThreadRole),
+  managerThreadId: Schema.optionalKey(Schema.NullOr(ThreadId)),
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   branch: Schema.NullOr(TrimmedNonEmptyString),
@@ -675,6 +691,9 @@ export const ThreadCreatedPayload = Schema.Struct({
   projectId: ProjectId,
   title: TrimmedNonEmptyString,
   modelSelection: ModelSelection,
+  role: Schema.optionalKey(ThreadRole),
+  managerThreadId: Schema.optionalKey(Schema.NullOr(ThreadId)),
+  managerScratchpad: Schema.optionalKey(Schema.NullOr(OrchestrationThreadManagerScratchpad)),
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(() => DEFAULT_RUNTIME_MODE)),
   interactionMode: ProviderInteractionMode.pipe(
     Schema.withDecodingDefault(() => DEFAULT_PROVIDER_INTERACTION_MODE),

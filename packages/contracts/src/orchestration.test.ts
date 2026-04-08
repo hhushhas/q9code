@@ -5,6 +5,7 @@ import { Effect, Schema } from "effect";
 import {
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
+  DEFAULT_THREAD_ROLE,
   OrchestrationCommand,
   OrchestrationEvent,
   OrchestrationGetTurnDiffInput,
@@ -255,6 +256,38 @@ it.effect("decodes thread.created runtime mode for historical events", () =>
 
     assert.strictEqual(parsed.runtimeMode, DEFAULT_RUNTIME_MODE);
     assert.strictEqual(parsed.modelSelection.provider, "codex");
+    assert.strictEqual(parsed.role ?? DEFAULT_THREAD_ROLE, DEFAULT_THREAD_ROLE);
+  }),
+);
+
+it.effect("decodes manager thread metadata on thread.created payloads", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeThreadCreatedPayload({
+      threadId: "thread-manager",
+      projectId: "project-1",
+      title: "Project manager",
+      modelSelection: {
+        provider: "codex",
+        model: "gpt-5.4",
+      },
+      role: "manager",
+      managerThreadId: null,
+      managerScratchpad: {
+        folderPath: "/tmp/workspace/scratchpad/managers/t3code",
+        sessionLogPath: "/tmp/workspace/scratchpad/managers/t3code/manager-session-log.md",
+      },
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    assert.strictEqual(parsed.role, "manager");
+    assert.strictEqual(
+      parsed.managerScratchpad?.sessionLogPath,
+      "/tmp/workspace/scratchpad/managers/t3code/manager-session-log.md",
+    );
   }),
 );
 

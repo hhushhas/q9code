@@ -1,4 +1,10 @@
-import { ProjectId, type ModelSelection, type ThreadId, type TurnId } from "@t3tools/contracts";
+import {
+  DEFAULT_THREAD_ROLE,
+  ProjectId,
+  type ModelSelection,
+  type ThreadId,
+  type TurnId,
+} from "@t3tools/contracts";
 import { type ChatMessage, type SessionPhase, type Thread, type ThreadSession } from "../types";
 import { randomUUID } from "~/lib/utils";
 import { type ComposerImageAttachment, type DraftThreadState } from "../composerDraftStore";
@@ -28,6 +34,9 @@ export function buildLocalDraftThread(
     projectId: draftThread.projectId,
     title: "New thread",
     modelSelection: fallbackModelSelection,
+    role: DEFAULT_THREAD_ROLE,
+    managerThreadId: null,
+    managerScratchpad: null,
     runtimeMode: draftThread.runtimeMode,
     interactionMode: draftThread.interactionMode,
     session: null,

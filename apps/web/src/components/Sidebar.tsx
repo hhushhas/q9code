@@ -417,7 +417,14 @@ function SidebarThreadRow(props: SidebarThreadRowProps) {
               onClick={(event) => event.stopPropagation()}
             />
           ) : (
-            <span className="min-w-0 flex-1 truncate text-xs">{thread.title}</span>
+            <>
+              <span className="min-w-0 flex-1 truncate text-xs">{thread.title}</span>
+              {thread.role === "manager" && (
+                <span className="shrink-0 rounded-full border border-border/70 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                  Mgr
+                </span>
+              )}
+            </>
           )}
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
