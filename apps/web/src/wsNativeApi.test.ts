@@ -73,6 +73,7 @@ const rpcClientMock = {
     refreshProviders: vi.fn(),
     upsertKeybinding: vi.fn(),
     getSettings: vi.fn(),
+    getManagerSessionLog: vi.fn(),
     updateSettings: vi.fn(),
     subscribeConfig: vi.fn(),
     subscribeLifecycle: vi.fn(),
@@ -199,6 +200,27 @@ describe("wsNativeApi", () => {
     expect(rpcClientMock.server.getConfig).toHaveBeenCalledWith();
     expect(rpcClientMock.server.subscribeConfig).not.toHaveBeenCalled();
     expect(rpcClientMock.server.subscribeLifecycle).not.toHaveBeenCalled();
+  });
+
+  it("forwards manager session log fetches to the RPC client", async () => {
+    rpcClientMock.server.getManagerSessionLog.mockResolvedValue({
+      threadId: ThreadId.makeUnsafe("thread-manager"),
+      sessionLogPath: "/tmp/workspace/scratchpad/managers/project/manager-session-log.md",
+      contents: "```manager-checklist\n- [ ] Follow up with worker\n```",
+      readAt: "2026-04-09T08:00:00.000Z",
+    });
+    const { createWsNativeApi } = await import("./wsNativeApi");
+
+    const api = createWsNativeApi();
+
+    await expect(
+      api.server.getManagerSessionLog(ThreadId.makeUnsafe("thread-manager")),
+    ).resolves.toMatchObject({
+      threadId: ThreadId.makeUnsafe("thread-manager"),
+    });
+    expect(rpcClientMock.server.getManagerSessionLog).toHaveBeenCalledWith({
+      threadId: ThreadId.makeUnsafe("thread-manager"),
+    });
   });
 
   it("forwards terminal and orchestration stream events", async () => {

@@ -1,4 +1,4 @@
-import { Cause, Effect, Layer, Option, Queue, Ref, Schema, Stream } from "effect";
+import { Cause, Effect, FileSystem, Layer, Option, Queue, Ref, Schema, Stream } from "effect";
 import {
   CommandId,
   EventId,
@@ -14,6 +14,7 @@ import {
   ProjectSearchEntriesError,
   ProjectWriteFileError,
   OrchestrationReplayEventsError,
+  ServerManagerSessionLogReadError,
   ThreadId,
   type TerminalEvent,
   WS_METHODS,
@@ -67,6 +68,7 @@ const WsRpcLayer = WsRpcGroup.toLayer(
     const workspaceEntries = yield* WorkspaceEntries;
     const workspaceFileSystem = yield* WorkspaceFileSystem;
     const projectSetupScriptRunner = yield* ProjectSetupScriptRunner;
+    const fileSystem = yield* FileSystem.FileSystem;
 
     const serverCommandId = (tag: string) =>
       CommandId.makeUnsafe(`server:${tag}:${crypto.randomUUID()}`);
@@ -356,6 +358,57 @@ const WsRpcLayer = WsRpcGroup.toLayer(
       };
     });
 
+    const loadManagerSessionLog = (threadId: ThreadId) =>
+      projectionSnapshotQuery.getSnapshot().pipe(
+        Effect.flatMap((snapshot) => {
+          const thread = snapshot.threads.find((entry) => entry.id === threadId) ?? null;
+          const managerThread =
+            thread?.role === "manager"
+              ? thread
+              : thread?.managerThreadId
+                ? (snapshot.threads.find((entry) => entry.id === thread.managerThreadId) ?? null)
+                : null;
+          const sessionLogPath = managerThread?.managerScratchpad?.sessionLogPath ?? null;
+          if (!sessionLogPath) {
+            return Effect.fail(
+              new ServerManagerSessionLogReadError({
+                message: "Manager session log is not available for this thread.",
+              }),
+            );
+          }
+          if (!managerThread) {
+            return Effect.fail(
+              new ServerManagerSessionLogReadError({
+                message: "Manager thread is not available for this thread.",
+              }),
+            );
+          }
+          return fileSystem.readFileString(sessionLogPath).pipe(
+            Effect.map((contents) => ({
+              threadId: managerThread.id,
+              sessionLogPath,
+              contents,
+              readAt: new Date().toISOString(),
+            })),
+            Effect.mapError(
+              (cause) =>
+                new ServerManagerSessionLogReadError({
+                  message: "Failed to read manager session log.",
+                  cause,
+                }),
+            ),
+          );
+        }),
+        Effect.mapError((cause) =>
+          Schema.is(ServerManagerSessionLogReadError)(cause)
+            ? cause
+            : new ServerManagerSessionLogReadError({
+                message: "Failed to load manager session log.",
+                cause,
+              }),
+        ),
+      );
+
     return WsRpcGroup.of({
       [ORCHESTRATION_WS_METHODS.getSnapshot]: (_input) =>
         observeRpcEffect(
@@ -533,6 +586,14 @@ const WsRpcLayer = WsRpcGroup.toLayer(
         observeRpcEffect(WS_METHODS.serverUpdateSettings, serverSettings.updateSettings(patch), {
           "rpc.aggregate": "server",
         }),
+      [WS_METHODS.serverGetManagerSessionLog]: (input) =>
+        observeRpcEffect(
+          WS_METHODS.serverGetManagerSessionLog,
+          loadManagerSessionLog(input.threadId),
+          {
+            "rpc.aggregate": "server",
+          },
+        ),
       [WS_METHODS.providerListSkills]: (input) =>
         observeRpcEffect(
           WS_METHODS.providerListSkills,

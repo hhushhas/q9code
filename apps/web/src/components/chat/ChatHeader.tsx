@@ -78,20 +78,19 @@ export const ChatHeader = memo(function ChatHeader({
               {activeProjectName}
             </h2>
             {activeThreadRoleBadge === "Manager" ? (
-              <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5">
+              <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-muted px-2 py-0.5">
                 <span className="status-dot status-dot-active" />
-                <span className="font-mono label-tiny text-primary">Manager Console</span>
               </div>
             ) : activeThreadRoleBadge === "Worker" ? (
               <div className="flex min-w-0 items-center gap-1.5">
-                <span className="text-muted-foreground/40">/</span>
-                <span className="truncate font-mono label-tiny font-medium text-muted-foreground/60">
+                <span className="text-muted-foreground">/</span>
+                <span className="truncate font-mono label-tiny font-medium text-muted-foreground">
                   {managerThreadTitle ?? "Manager"}
                 </span>
-                <span className="text-primary font-bold">→</span>
+                <span className="text-muted-foreground font-bold">→</span>
                 <Badge
                   variant="outline"
-                  className="shrink-0 truncate border-primary/30 font-mono label-tiny font-bold text-primary"
+                  className="shrink-0 truncate border-border/60 font-mono label-tiny font-bold text-foreground"
                 >
                   {activeThreadTitle}
                 </Badge>

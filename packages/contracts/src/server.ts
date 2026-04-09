@@ -204,3 +204,24 @@ export const ServerProviderUpdatedPayload = Schema.Struct({
   providers: ServerProviders,
 });
 export type ServerProviderUpdatedPayload = typeof ServerProviderUpdatedPayload.Type;
+
+export const ServerManagerSessionLogReadInput = Schema.Struct({
+  threadId: ThreadId,
+});
+export type ServerManagerSessionLogReadInput = typeof ServerManagerSessionLogReadInput.Type;
+
+export const ServerManagerSessionLogReadResult = Schema.Struct({
+  threadId: ThreadId,
+  sessionLogPath: TrimmedNonEmptyString,
+  contents: Schema.String,
+  readAt: IsoDateTime,
+});
+export type ServerManagerSessionLogReadResult = typeof ServerManagerSessionLogReadResult.Type;
+
+export class ServerManagerSessionLogReadError extends Schema.TaggedErrorClass<ServerManagerSessionLogReadError>()(
+  "ServerManagerSessionLogReadError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {}

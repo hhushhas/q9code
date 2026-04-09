@@ -330,6 +330,9 @@ export function projectEvent(
             ...(payload.modelSelection !== undefined
               ? { modelSelection: payload.modelSelection }
               : {}),
+            ...(payload.managerScratchpad !== undefined
+              ? { managerScratchpad: payload.managerScratchpad }
+              : {}),
             ...(payload.branch !== undefined ? { branch: payload.branch } : {}),
             ...(payload.worktreePath !== undefined ? { worktreePath: payload.worktreePath } : {}),
             updatedAt: payload.updatedAt,

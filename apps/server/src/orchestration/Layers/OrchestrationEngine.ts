@@ -62,6 +62,11 @@ function commandToAggregateRef(command: OrchestrationCommand): {
         aggregateKind: "project",
         aggregateId: command.projectId,
       };
+    case "manager.worker.input.send":
+      return {
+        aggregateKind: "thread",
+        aggregateId: command.managerThreadId,
+      };
     default:
       return {
         aggregateKind: "thread",

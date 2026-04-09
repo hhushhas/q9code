@@ -94,6 +94,7 @@ export function createWsNativeApi(): NativeApi {
       refreshProviders: rpcClient.server.refreshProviders,
       upsertKeybinding: rpcClient.server.upsertKeybinding,
       getSettings: rpcClient.server.getSettings,
+      getManagerSessionLog: (threadId) => rpcClient.server.getManagerSessionLog({ threadId }),
       updateSettings: rpcClient.server.updateSettings,
     },
     orchestration: {

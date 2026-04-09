@@ -27,6 +27,7 @@ import {
   GlobeIcon,
   HammerIcon,
   type LucideIcon,
+  MessageSquareIcon,
   SquarePenIcon,
   TerminalIcon,
   Undo2Icon,
@@ -323,8 +324,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               : groupedEntries;
           const hiddenCount = groupedEntries.length - visibleEntries.length;
           const onlyToolEntries = groupedEntries.every((entry) => entry.tone === "tool");
+          const onlyManagerEntries = groupedEntries.every(
+            (entry) => entry.semanticKind === "manager-orchestration",
+          );
           const showHeader = hasOverflow || !onlyToolEntries;
-          const groupLabel = onlyToolEntries ? "Tool calls" : "Work log";
+          const groupLabel = onlyToolEntries
+            ? "Tool calls"
+            : onlyManagerEntries
+              ? "Manager activity"
+              : "Work log";
 
           return (
             <div className="rounded-xl border border-border/45 bg-card/25 px-2 py-1.5">
@@ -797,6 +805,11 @@ function workEntryPreview(
 }
 
 function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
+  const managerIcon = managerWorkEntryIcon(workEntry);
+  if (managerIcon) {
+    return managerIcon;
+  }
+
   if (workEntry.requestKind === "command") return TerminalIcon;
   if (workEntry.requestKind === "file-read") return EyeIcon;
   if (workEntry.requestKind === "file-change") return SquarePenIcon;
@@ -821,6 +834,29 @@ function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
   return workToneIcon(workEntry.tone).icon;
 }
 
+function managerWorkEntryIcon(workEntry: TimelineWorkEntry): LucideIcon | null {
+  switch (workEntry.managerCardKind) {
+    case "worker-launched":
+    case "auto-started-after-dependencies":
+      return BotIcon;
+    case "worker-input-sent":
+    case "needs-input":
+      return MessageSquareIcon;
+    case "worker-input-mode":
+      return Undo2Icon;
+    case "worker-complete":
+      return CheckIcon;
+    case "needs-approval":
+      return EyeIcon;
+    case "worker-blocked":
+    case "worker-failed":
+    case "waiting-on-dependencies":
+      return CircleAlertIcon;
+    default:
+      return null;
+  }
+}
+
 function capitalizePhrase(value: string): string {
   const trimmed = value.trim();
   if (trimmed.length === 0) {
@@ -830,6 +866,9 @@ function capitalizePhrase(value: string): string {
 }
 
 function toolWorkEntryHeading(workEntry: TimelineWorkEntry): string {
+  if (workEntry.semanticKind === "manager-orchestration") {
+    return capitalizePhrase(workEntry.label);
+  }
   if (!workEntry.toolTitle) {
     return capitalizePhrase(normalizeCompactToolLabel(workEntry.label));
   }
@@ -865,6 +904,11 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
             )}
             title={displayText}
           >
+            {workEntry.semanticKind === "manager-orchestration" && (
+              <span className="mr-1.5 rounded-full border border-border/60 bg-muted/50 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.18em] text-muted-foreground/70">
+                Manager
+              </span>
+            )}
             <span className={cn("text-foreground/80", workToneClass(workEntry.tone))}>
               {heading}
             </span>

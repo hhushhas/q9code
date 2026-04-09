@@ -81,6 +81,8 @@ export const ProviderApprovalDecision = Schema.Literals([
 export type ProviderApprovalDecision = typeof ProviderApprovalDecision.Type;
 export const ProviderUserInputAnswers = Schema.Record(Schema.String, Schema.Unknown);
 export type ProviderUserInputAnswers = typeof ProviderUserInputAnswers.Type;
+export const ManagerWorkerInputMode = Schema.Literals(["queue", "interrupt"]);
+export type ManagerWorkerInputMode = typeof ManagerWorkerInputMode.Type;
 
 export const PROVIDER_SEND_TURN_MAX_INPUT_CHARS = 120_000;
 export const PROVIDER_SEND_TURN_MAX_ATTACHMENTS = 8;
@@ -509,6 +511,20 @@ const ThreadSessionStopCommand = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+const ManagerWorkerInputSendCommand = Schema.Struct({
+  type: Schema.Literal("manager.worker.input.send"),
+  commandId: CommandId,
+  managerThreadId: ThreadId,
+  workerThreadId: ThreadId,
+  input: Schema.Struct({
+    messageId: MessageId,
+    text: Schema.String,
+    attachments: Schema.Array(ChatAttachment),
+  }),
+  mode: ManagerWorkerInputMode,
+  createdAt: IsoDateTime,
+});
+
 const DispatchableClientOrchestrationCommand = Schema.Union([
   ProjectCreateCommand,
   ProjectMetaUpdateCommand,
@@ -526,6 +542,7 @@ const DispatchableClientOrchestrationCommand = Schema.Union([
   ThreadUserInputRespondCommand,
   ThreadCheckpointRevertCommand,
   ThreadSessionStopCommand,
+  ManagerWorkerInputSendCommand,
 ]);
 export type DispatchableClientOrchestrationCommand =
   typeof DispatchableClientOrchestrationCommand.Type;
@@ -547,6 +564,7 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadUserInputRespondCommand,
   ThreadCheckpointRevertCommand,
   ThreadSessionStopCommand,
+  ManagerWorkerInputSendCommand,
 ]);
 export type ClientOrchestrationCommand = typeof ClientOrchestrationCommand.Type;
 
@@ -651,6 +669,7 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.checkpoint-revert-requested",
   "thread.reverted",
   "thread.session-stop-requested",
+  "manager.worker-input-requested",
   "thread.session-set",
   "thread.proposed-plan-upserted",
   "thread.turn-diff-completed",
@@ -724,6 +743,10 @@ export const ThreadMetaUpdatedPayload = Schema.Struct({
   threadId: ThreadId,
   title: Schema.optional(TrimmedNonEmptyString),
   modelSelection: Schema.optional(ModelSelection),
+  managerScratchpad: Schema.optionalKey(Schema.NullOr(OrchestrationThreadManagerScratchpad)),
+  previousManagerScratchpad: Schema.optionalKey(
+    Schema.NullOr(OrchestrationThreadManagerScratchpad),
+  ),
   branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   updatedAt: IsoDateTime,
@@ -808,6 +831,16 @@ export const ThreadSessionStopRequestedPayload = Schema.Struct({
 export const ThreadSessionSetPayload = Schema.Struct({
   threadId: ThreadId,
   session: OrchestrationSession,
+});
+
+export const ManagerWorkerInputRequestedPayload = Schema.Struct({
+  managerThreadId: ThreadId,
+  workerThreadId: ThreadId,
+  messageId: MessageId,
+  text: Schema.String,
+  attachments: Schema.Array(ChatAttachment),
+  mode: ManagerWorkerInputMode,
+  createdAt: IsoDateTime,
 });
 
 export const ThreadProposedPlanUpsertedPayload = Schema.Struct({
@@ -942,6 +975,11 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("thread.session-stop-requested"),
     payload: ThreadSessionStopRequestedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("manager.worker-input-requested"),
+    payload: ManagerWorkerInputRequestedPayload,
   }),
   Schema.Struct({
     ...EventBaseFields,

@@ -2,14 +2,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { CommandId, MessageId, ThreadId, TurnId } from "@t3tools/contracts";
+import { CommandId, EventId, MessageId, ThreadId, TurnId } from "@t3tools/contracts";
 import {
   extractManagerInternalAlert,
-  WORKER_FINAL_CLOSE_TAG,
-  WORKER_FINAL_OPEN_TAG,
+  WORKER_BLOCKED_CLOSE_TAG,
+  WORKER_BLOCKED_OPEN_TAG,
+  WORKER_COMPLETE_CLOSE_TAG,
+  WORKER_COMPLETE_OPEN_TAG,
 } from "@t3tools/shared/manager";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Effect, Exit, Layer, ManagedRuntime, Scope } from "effect";
+import { Effect, Exit, Layer, ManagedRuntime, Scope, Stream } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
@@ -127,9 +129,15 @@ describe("ManagerThreadReactor", () => {
       }),
     );
 
+    const readModel = await Effect.runPromise(engine.getReadModel());
+    const managerThread = readModel.threads.find(
+      (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+    );
+
     return {
       engine,
       workspaceRoot,
+      managerScratchpad: managerThread?.managerScratchpad ?? null,
     };
   }
 
@@ -206,15 +214,10 @@ describe("ManagerThreadReactor", () => {
       model: "gpt-5.4",
     });
 
-    const logPath = path.join(
-      harness.workspaceRoot,
-      "scratchpad",
-      "managers",
-      path.basename(harness.workspaceRoot),
-      "manager-session-log.md",
-    );
+    const logPath = harness.managerScratchpad?.sessionLogPath ?? "";
     await waitFor(
       async () =>
+        logPath.length > 0 &&
         fs.existsSync(logPath) &&
         fs.readFileSync(logPath, "utf8").includes("Manager delegated 1 worker.") &&
         fs.readFileSync(logPath, "utf8").includes("Worker created: Reconnect patch"),
@@ -222,6 +225,265 @@ describe("ManagerThreadReactor", () => {
     const logContents = fs.readFileSync(logPath, "utf8");
     expect(logContents).toContain("Manager delegated 1 worker.");
     expect(logContents).toContain("Worker created: Reconnect patch");
+    const workerLogPath = path.join(
+      harness.managerScratchpad?.folderPath ?? "",
+      "workers",
+      `${workers[0]?.id}.md`,
+    );
+    expect(fs.existsSync(workerLogPath)).toBe(true);
+    expect(fs.readFileSync(workerLogPath, "utf8")).toContain(
+      'Worker thread created as "Reconnect patch".',
+    );
+  });
+
+  it("preserves explicit worker model selection from manager delegation manifests", async () => {
+    const harness = await createHarness();
+    const createdAt = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-manager-turn-start-model-selection"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        message: {
+          messageId: asMessageId("user-message-manager-model-selection"),
+          role: "user",
+          text: "Launch a support worker to search reconnect regressions.",
+          attachments: [],
+        },
+        interactionMode: "plan",
+        runtimeMode: "full-access",
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.makeUnsafe("cmd-manager-assistant-delta-model-selection"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        messageId: asMessageId("assistant-message-manager-model-selection"),
+        delta: [
+          "Delegating a support search worker.",
+          "<manager_delegation>",
+          JSON.stringify({
+            summary: "Use the cheaper support worker for the codebase sweep.",
+            workers: [
+              {
+                id: "support-search",
+                title: "Support search",
+                prompt:
+                  "Search the codebase for websocket reconnect regressions and summarize them.",
+                modelSelection: {
+                  provider: "codex",
+                  model: "gpt-5.4-mini",
+                  options: {
+                    reasoningEffort: "medium",
+                    fastMode: true,
+                  },
+                },
+              },
+            ],
+          }),
+          "</manager_delegation>",
+        ].join("\n"),
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.complete",
+        commandId: CommandId.makeUnsafe("cmd-manager-assistant-complete-model-selection"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        messageId: asMessageId("assistant-message-manager-model-selection"),
+        createdAt,
+      }),
+    );
+
+    await waitFor(async () => {
+      const readModel = await Effect.runPromise(harness.engine.getReadModel());
+      return (
+        readModel.threads.filter(
+          (thread) => thread.managerThreadId === ThreadId.makeUnsafe("thread-manager"),
+        ).length === 1
+      );
+    });
+
+    const readModel = await Effect.runPromise(harness.engine.getReadModel());
+    const worker = readModel.threads.find(
+      (thread) => thread.managerThreadId === ThreadId.makeUnsafe("thread-manager"),
+    );
+
+    expect(worker?.modelSelection).toEqual({
+      provider: "codex",
+      model: "gpt-5.4-mini",
+      options: {
+        reasoningEffort: "medium",
+        fastMode: true,
+      },
+    });
+
+    const manager = readModel.threads.find(
+      (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+    );
+    const launchActivity = manager?.activities.find(
+      (activity) => activity.kind === "manager.worker.launched",
+    );
+    expect(launchActivity?.payload).toMatchObject({
+      workerId: "support-search",
+      workerTitle: "Support search",
+      modelSelection: {
+        provider: "codex",
+        model: "gpt-5.4-mini",
+        options: {
+          reasoningEffort: "medium",
+          fastMode: true,
+        },
+      },
+    });
+  });
+
+  it("records dependency waiting cards and auto-starts workers after dependencies clear", async () => {
+    const harness = await createHarness();
+    const createdAt = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-manager-turn-start-with-dependencies"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        message: {
+          messageId: asMessageId("user-message-manager-dependencies"),
+          role: "user",
+          text: "Coordinate implementation and release.",
+          attachments: [],
+        },
+        interactionMode: "plan",
+        runtimeMode: "full-access",
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.makeUnsafe("cmd-manager-assistant-delta-with-dependencies"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        messageId: asMessageId("assistant-message-manager-dependencies"),
+        delta: [
+          "Delegating implementation and release.",
+          "<manager_delegation>",
+          JSON.stringify({
+            summary: "Implementation first, then release.",
+            workers: [
+              {
+                id: "implement",
+                title: "Implement",
+                prompt: "Land the fix.",
+              },
+              {
+                id: "release",
+                title: "Release",
+                prompt: "Ship after implementation is done.",
+                kind: "release",
+                dependsOn: ["implement"],
+              },
+            ],
+          }),
+          "</manager_delegation>",
+        ].join("\n"),
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.complete",
+        commandId: CommandId.makeUnsafe("cmd-manager-assistant-complete-with-dependencies"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        messageId: asMessageId("assistant-message-manager-dependencies"),
+        createdAt,
+      }),
+    );
+
+    await waitFor(async () => {
+      const readModel = await Effect.runPromise(harness.engine.getReadModel());
+      const manager = readModel.threads.find(
+        (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+      );
+      return (manager?.activities ?? []).some(
+        (activity) => activity.kind === "manager.worker.waiting-on-dependencies",
+      );
+    });
+
+    let readModel = await Effect.runPromise(harness.engine.getReadModel());
+    let manager = readModel.threads.find(
+      (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+    );
+    const implementLaunch = (manager?.activities ?? []).find(
+      (activity) => activity.kind === "manager.worker.launched",
+    );
+    const releaseWaiting = (manager?.activities ?? []).find(
+      (activity) => activity.kind === "manager.worker.waiting-on-dependencies",
+    );
+    expect(implementLaunch?.payload).toMatchObject({
+      workerId: "implement",
+      workerTitle: "Implement",
+    });
+    expect(releaseWaiting?.payload).toMatchObject({
+      workerId: "release",
+      workerTitle: "Release",
+      blockingWorkerIds: ["implement"],
+    });
+
+    const implementThreadId = (
+      implementLaunch?.payload as { workerThreadId?: ThreadId } | undefined
+    )?.workerThreadId;
+    expect(implementThreadId).toBeDefined();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.makeUnsafe("cmd-implement-worker-complete-delta"),
+        threadId: implementThreadId!,
+        messageId: asMessageId("assistant-message-implement-worker"),
+        delta: [
+          WORKER_COMPLETE_OPEN_TAG,
+          "Implementation shipped.",
+          WORKER_COMPLETE_CLOSE_TAG,
+        ].join("\n"),
+        createdAt: new Date(Date.now() + 500).toISOString(),
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.complete",
+        commandId: CommandId.makeUnsafe("cmd-implement-worker-complete"),
+        threadId: implementThreadId!,
+        messageId: asMessageId("assistant-message-implement-worker"),
+        createdAt: new Date(Date.now() + 500).toISOString(),
+      }),
+    );
+
+    await waitFor(async () => {
+      const nextReadModel = await Effect.runPromise(harness.engine.getReadModel());
+      const nextManager = nextReadModel.threads.find(
+        (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+      );
+      return (nextManager?.activities ?? []).some(
+        (activity) => activity.kind === "manager.worker.auto-started",
+      );
+    });
+
+    readModel = await Effect.runPromise(harness.engine.getReadModel());
+    manager = readModel.threads.find(
+      (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+    );
+    const releaseAutoStarted = (manager?.activities ?? []).find(
+      (activity) => activity.kind === "manager.worker.auto-started",
+    );
+    expect(releaseAutoStarted?.payload).toMatchObject({
+      workerId: "release",
+      workerTitle: "Release",
+      triggeringWorkerIds: ["implement"],
+    });
   });
 
   it("does not wake the manager for ordinary worker assistant responses", async () => {
@@ -283,15 +545,10 @@ describe("ManagerThreadReactor", () => {
       ),
     ).toBe(false);
 
-    const logPath = path.join(
-      harness.workspaceRoot,
-      "scratchpad",
-      "managers",
-      path.basename(harness.workspaceRoot),
-      "manager-session-log.md",
-    );
+    const logPath = harness.managerScratchpad?.sessionLogPath ?? "";
     await waitFor(
       async () =>
+        logPath.length > 0 &&
         fs.existsSync(logPath) &&
         fs
           .readFileSync(logPath, "utf8")
@@ -335,9 +592,9 @@ describe("ManagerThreadReactor", () => {
         delta: [
           "Progress note before the final handoff.",
           "",
-          WORKER_FINAL_OPEN_TAG,
+          WORKER_COMPLETE_OPEN_TAG,
           "Reconnect flow patched and verified.",
-          WORKER_FINAL_CLOSE_TAG,
+          WORKER_COMPLETE_CLOSE_TAG,
         ].join("\n"),
         createdAt,
       }),
@@ -376,6 +633,123 @@ describe("ManagerThreadReactor", () => {
     expect(
       extractManagerInternalAlert(managerAlertMessage?.text ?? "")?.alerts[0]?.workerTitle,
     ).toBe("Reconnect worker");
+  });
+
+  it("records blocked worker outcomes separately from runtime session state", async () => {
+    const harness = await createHarness();
+    const createdAt = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.makeUnsafe("cmd-thread-create-worker-reactor-blocked"),
+        threadId: ThreadId.makeUnsafe("thread-worker-blocked"),
+        projectId: asProjectId("project-1"),
+        title: "Blocked worker",
+        modelSelection: {
+          provider: "codex",
+          model: "gpt-5.4",
+        },
+        role: "worker",
+        managerThreadId: ThreadId.makeUnsafe("thread-manager"),
+        interactionMode: "default",
+        runtimeMode: "full-access",
+        branch: null,
+        worktreePath: null,
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.makeUnsafe("cmd-worker-assistant-delta-blocked"),
+        threadId: ThreadId.makeUnsafe("thread-worker-blocked"),
+        messageId: asMessageId("assistant-message-worker-blocked"),
+        delta: [
+          WORKER_BLOCKED_OPEN_TAG,
+          "I need the manager to choose whether this should interrupt the running worker.",
+          WORKER_BLOCKED_CLOSE_TAG,
+        ].join("\n"),
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.complete",
+        commandId: CommandId.makeUnsafe("cmd-worker-assistant-complete-blocked"),
+        threadId: ThreadId.makeUnsafe("thread-worker-blocked"),
+        messageId: asMessageId("assistant-message-worker-blocked"),
+        createdAt,
+      }),
+    );
+
+    await waitFor(async () => {
+      const readModel = await Effect.runPromise(harness.engine.getReadModel());
+      const manager = readModel.threads.find(
+        (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+      );
+      return (manager?.activities ?? []).some(
+        (activity) =>
+          activity.kind === "manager.worker.blocked" &&
+          activity.summary.includes("reported a blocker"),
+      );
+    });
+
+    const readModel = await Effect.runPromise(harness.engine.getReadModel());
+    const manager = readModel.threads.find(
+      (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+    );
+    expect(
+      (manager?.activities ?? []).some(
+        (activity) =>
+          activity.kind === "manager.worker.blocked" &&
+          activity.summary.includes("reported a blocker"),
+      ),
+    ).toBe(true);
+    const managerAlertMessage = [...(manager?.messages ?? [])]
+      .toReversed()
+      .find((message) => message.role === "user" && extractManagerInternalAlert(message.text));
+    expect(extractManagerInternalAlert(managerAlertMessage?.text ?? "")?.alerts[0]?.kind).toBe(
+      "worker.blocked",
+    );
+  });
+
+  it("renames the sacred manager folder when the manager title changes", async () => {
+    const harness = await createHarness();
+    const beforeRenamePath = harness.managerScratchpad?.sessionLogPath ?? "";
+    await waitFor(async () => beforeRenamePath.length > 0 && fs.existsSync(beforeRenamePath));
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.makeUnsafe("cmd-thread-meta-update-manager-rename"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        title: "Beacon coordinator",
+      }),
+    );
+
+    await waitFor(async () => {
+      const readModel = await Effect.runPromise(harness.engine.getReadModel());
+      const manager = readModel.threads.find(
+        (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+      );
+      const nextLogPath = manager?.managerScratchpad?.sessionLogPath ?? "";
+      return (
+        nextLogPath.length > 0 && fs.existsSync(nextLogPath) && !fs.existsSync(beforeRenamePath)
+      );
+    });
+
+    const readModel = await Effect.runPromise(harness.engine.getReadModel());
+    const manager = readModel.threads.find(
+      (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+    );
+    expect(manager?.title).toBe("Beacon coordinator");
+    expect(manager?.managerScratchpad?.folderPath).toBe(
+      path.join(harness.workspaceRoot, "scratchpad", "beacon-coordinator"),
+    );
+    expect(fs.readFileSync(manager?.managerScratchpad?.sessionLogPath ?? "", "utf8")).toContain(
+      'Manager renamed to "Beacon coordinator".',
+    );
   });
 
   it("queues manager alerts until the manager is ready to respond again", async () => {
@@ -426,9 +800,9 @@ describe("ManagerThreadReactor", () => {
         threadId: ThreadId.makeUnsafe("thread-worker-queued"),
         messageId: asMessageId("assistant-message-worker-queued"),
         delta: [
-          WORKER_FINAL_OPEN_TAG,
+          WORKER_COMPLETE_OPEN_TAG,
           "Queued worker finished its task.",
-          WORKER_FINAL_CLOSE_TAG,
+          WORKER_COMPLETE_CLOSE_TAG,
         ].join("\n"),
         createdAt,
       }),
@@ -494,5 +868,327 @@ describe("ManagerThreadReactor", () => {
     expect(
       extractManagerInternalAlert(managerAlertMessage?.text ?? "")?.alerts[0]?.workerTitle,
     ).toBe("Queued worker");
+  });
+
+  it("interrupts a running worker before sending manager follow-up input", async () => {
+    const harness = await createHarness();
+    const createdAt = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.makeUnsafe("cmd-thread-create-worker-manager-input"),
+        threadId: ThreadId.makeUnsafe("thread-worker-input"),
+        projectId: asProjectId("project-1"),
+        title: "Reconnect worker",
+        modelSelection: {
+          provider: "codex",
+          model: "gpt-5.4",
+        },
+        role: "worker",
+        managerThreadId: ThreadId.makeUnsafe("thread-manager"),
+        interactionMode: "default",
+        runtimeMode: "full-access",
+        branch: null,
+        worktreePath: null,
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.makeUnsafe("cmd-thread-session-set-worker-manager-input"),
+        threadId: ThreadId.makeUnsafe("thread-worker-input"),
+        session: {
+          threadId: ThreadId.makeUnsafe("thread-worker-input"),
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: TurnId.makeUnsafe("turn-worker-running"),
+          lastError: null,
+          updatedAt: createdAt,
+        },
+        createdAt,
+      }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "manager.worker.input.send",
+        commandId: CommandId.makeUnsafe("cmd-manager-worker-input-send"),
+        managerThreadId: ThreadId.makeUnsafe("thread-manager"),
+        workerThreadId: ThreadId.makeUnsafe("thread-worker-input"),
+        input: {
+          messageId: asMessageId("msg-manager-worker-input"),
+          text: "Stop the current attempt and focus on websocket reconnects.",
+          attachments: [],
+        },
+        mode: "interrupt",
+        createdAt,
+      }),
+    );
+
+    await waitFor(async () => {
+      const events = (await Effect.runPromise(
+        Stream.runCollect(harness.engine.readEvents(0)).pipe(
+          Effect.map((entries) => Array.from(entries) as Array<{ type: string; payload: any }>),
+        ),
+      )) as Array<{ type: string; payload: any }>;
+      return events.some((event) => event.type === "thread.turn-interrupt-requested");
+    });
+
+    const events = (await Effect.runPromise(
+      Stream.runCollect(harness.engine.readEvents(0)).pipe(
+        Effect.map((entries) => Array.from(entries) as Array<{ type: string; payload: any }>),
+      ),
+    )) as Array<{ type: string; payload: any }>;
+    expect(events.some((event) => event.type === "manager.worker-input-requested")).toBe(true);
+    expect(
+      events.some(
+        (event) =>
+          event.type === "thread.turn-interrupt-requested" &&
+          event.payload.threadId === ThreadId.makeUnsafe("thread-worker-input"),
+      ),
+    ).toBe(true);
+    expect(
+      events.some(
+        (event) =>
+          event.type === "thread.turn-start-requested" &&
+          event.payload.threadId === ThreadId.makeUnsafe("thread-worker-input") &&
+          event.payload.messageId === asMessageId("msg-manager-worker-input"),
+      ),
+    ).toBe(true);
+
+    const logPath = harness.managerScratchpad?.sessionLogPath ?? "";
+    await waitFor(
+      async () =>
+        fs.existsSync(logPath) &&
+        fs
+          .readFileSync(logPath, "utf8")
+          .includes('Manager sent input to worker "Reconnect worker"') &&
+        fs.readFileSync(logPath, "utf8").includes("Mode: interrupt"),
+    );
+
+    const readModel = await Effect.runPromise(harness.engine.getReadModel());
+    const manager = readModel.threads.find(
+      (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+    );
+    expect(
+      (manager?.activities ?? []).some((activity) => activity.kind === "manager.worker.input.sent"),
+    ).toBe(true);
+    expect(
+      (manager?.activities ?? []).some((activity) => activity.kind === "manager.worker.input.mode"),
+    ).toBe(true);
+  });
+
+  it("queues manager follow-up input for non-running workers without emitting an interrupt", async () => {
+    const harness = await createHarness();
+    const createdAt = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.makeUnsafe("cmd-thread-create-worker-manager-queue"),
+        threadId: ThreadId.makeUnsafe("thread-worker-queue"),
+        projectId: asProjectId("project-1"),
+        title: "Idle worker",
+        modelSelection: {
+          provider: "codex",
+          model: "gpt-5.4",
+        },
+        role: "worker",
+        managerThreadId: ThreadId.makeUnsafe("thread-manager"),
+        interactionMode: "default",
+        runtimeMode: "full-access",
+        branch: null,
+        worktreePath: null,
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.makeUnsafe("cmd-thread-session-set-worker-manager-queue"),
+        threadId: ThreadId.makeUnsafe("thread-worker-queue"),
+        session: {
+          threadId: ThreadId.makeUnsafe("thread-worker-queue"),
+          status: "stopped",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: createdAt,
+        },
+        createdAt,
+      }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "manager.worker.input.send",
+        commandId: CommandId.makeUnsafe("cmd-manager-worker-queue-send"),
+        managerThreadId: ThreadId.makeUnsafe("thread-manager"),
+        workerThreadId: ThreadId.makeUnsafe("thread-worker-queue"),
+        input: {
+          messageId: asMessageId("msg-manager-worker-queue"),
+          text: "Pick up from the last checkpoint and continue with the retry fix.",
+          attachments: [],
+        },
+        mode: "queue",
+        createdAt,
+      }),
+    );
+
+    await waitFor(async () => {
+      const events = (await Effect.runPromise(
+        Stream.runCollect(harness.engine.readEvents(0)).pipe(
+          Effect.map((entries) => Array.from(entries) as Array<{ type: string; payload: any }>),
+        ),
+      )) as Array<{ type: string; payload: any }>;
+      return events.some(
+        (event) =>
+          event.type === "thread.turn-start-requested" &&
+          event.payload.messageId === asMessageId("msg-manager-worker-queue"),
+      );
+    });
+
+    const events = (await Effect.runPromise(
+      Stream.runCollect(harness.engine.readEvents(0)).pipe(
+        Effect.map((entries) => Array.from(entries) as Array<{ type: string; payload: any }>),
+      ),
+    )) as Array<{ type: string; payload: any }>;
+    expect(
+      events.some(
+        (event) =>
+          event.type === "thread.turn-start-requested" &&
+          event.payload.threadId === ThreadId.makeUnsafe("thread-worker-queue"),
+      ),
+    ).toBe(true);
+    expect(
+      events.some(
+        (event) =>
+          event.type === "thread.turn-interrupt-requested" &&
+          event.payload.threadId === ThreadId.makeUnsafe("thread-worker-queue"),
+      ),
+    ).toBe(false);
+
+    const readModel = await Effect.runPromise(harness.engine.getReadModel());
+    const manager = readModel.threads.find(
+      (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+    );
+    const inputModeActivity = (manager?.activities ?? []).find(
+      (activity) => activity.kind === "manager.worker.input.mode",
+    );
+    expect(inputModeActivity?.payload).toMatchObject({
+      requestedMode: "queue",
+      effectiveMode: "queue",
+    });
+  });
+
+  it("records dedicated manager cards for approval, input, and failure worker states", async () => {
+    const harness = await createHarness();
+    const createdAt = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.makeUnsafe("cmd-thread-create-worker-state-cards"),
+        threadId: ThreadId.makeUnsafe("thread-worker-state-cards"),
+        projectId: asProjectId("project-1"),
+        title: "State cards worker",
+        modelSelection: {
+          provider: "codex",
+          model: "gpt-5.4",
+        },
+        role: "worker",
+        managerThreadId: ThreadId.makeUnsafe("thread-manager"),
+        interactionMode: "default",
+        runtimeMode: "full-access",
+        branch: null,
+        worktreePath: null,
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.activity.append",
+        commandId: CommandId.makeUnsafe("cmd-worker-approval-requested"),
+        threadId: ThreadId.makeUnsafe("thread-worker-state-cards"),
+        activity: {
+          id: EventId.makeUnsafe("activity-worker-approval-requested"),
+          tone: "approval",
+          kind: "approval.requested",
+          summary: "Command approval requested",
+          payload: {
+            requestId: "req-approval-1",
+            requestKind: "command",
+            detail: "Deploy the release build.",
+          },
+          turnId: null,
+          createdAt,
+        },
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.activity.append",
+        commandId: CommandId.makeUnsafe("cmd-worker-user-input-requested"),
+        threadId: ThreadId.makeUnsafe("thread-worker-state-cards"),
+        activity: {
+          id: EventId.makeUnsafe("activity-worker-user-input-requested"),
+          tone: "info",
+          kind: "user-input.requested",
+          summary: "Need release window",
+          payload: {
+            requestId: "req-input-1",
+            questions: [
+              {
+                id: "window",
+                header: "Window",
+                question: "Which rollout window should I use?",
+                options: [{ label: "Now", description: "Ship immediately." }],
+              },
+            ],
+          },
+          turnId: null,
+          createdAt: new Date(Date.now() + 100).toISOString(),
+        },
+        createdAt: new Date(Date.now() + 100).toISOString(),
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.activity.append",
+        commandId: CommandId.makeUnsafe("cmd-worker-runtime-error"),
+        threadId: ThreadId.makeUnsafe("thread-worker-state-cards"),
+        activity: {
+          id: EventId.makeUnsafe("activity-worker-runtime-error"),
+          tone: "error",
+          kind: "runtime.error",
+          summary: "Provider crashed while packaging the release.",
+          payload: {},
+          turnId: null,
+          createdAt: new Date(Date.now() + 200).toISOString(),
+        },
+        createdAt: new Date(Date.now() + 200).toISOString(),
+      }),
+    );
+
+    await waitFor(async () => {
+      const readModel = await Effect.runPromise(harness.engine.getReadModel());
+      const manager = readModel.threads.find(
+        (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+      );
+      return (
+        (manager?.activities ?? []).some(
+          (activity) => activity.kind === "manager.worker.needs-approval",
+        ) &&
+        (manager?.activities ?? []).some(
+          (activity) => activity.kind === "manager.worker.needs-input",
+        ) &&
+        (manager?.activities ?? []).some((activity) => activity.kind === "manager.worker.failed")
+      );
+    });
   });
 });

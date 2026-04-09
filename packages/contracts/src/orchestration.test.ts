@@ -273,8 +273,8 @@ it.effect("decodes manager thread metadata on thread.created payloads", () =>
       role: "manager",
       managerThreadId: null,
       managerScratchpad: {
-        folderPath: "/tmp/workspace/scratchpad/managers/t3code",
-        sessionLogPath: "/tmp/workspace/scratchpad/managers/t3code/manager-session-log.md",
+        folderPath: "/tmp/workspace/scratchpad/atlas-coordinator",
+        sessionLogPath: "/tmp/workspace/scratchpad/atlas-coordinator/manager-session-log.md",
       },
       interactionMode: "default",
       branch: null,
@@ -286,23 +286,37 @@ it.effect("decodes manager thread metadata on thread.created payloads", () =>
     assert.strictEqual(parsed.role, "manager");
     assert.strictEqual(
       parsed.managerScratchpad?.sessionLogPath,
-      "/tmp/workspace/scratchpad/managers/t3code/manager-session-log.md",
+      "/tmp/workspace/scratchpad/atlas-coordinator/manager-session-log.md",
     );
   }),
 );
 
-it.effect("decodes thread.meta-updated payloads with explicit provider", () =>
-  Effect.gen(function* () {
-    const parsed = yield* decodeThreadMetaUpdatedPayload({
-      threadId: "thread-1",
-      modelSelection: {
-        provider: "claudeAgent",
-        model: "claude-opus-4-6",
-      },
-      updatedAt: "2026-01-01T00:00:00.000Z",
-    });
-    assert.strictEqual(parsed.modelSelection?.provider, "claudeAgent");
-  }),
+it.effect(
+  "decodes thread.meta-updated payloads with explicit provider and manager scratchpad metadata",
+  () =>
+    Effect.gen(function* () {
+      const parsed = yield* decodeThreadMetaUpdatedPayload({
+        threadId: "thread-1",
+        modelSelection: {
+          provider: "claudeAgent",
+          model: "claude-opus-4-6",
+        },
+        managerScratchpad: {
+          folderPath: "/tmp/workspace/scratchpad/beacon-coordinator",
+          sessionLogPath: "/tmp/workspace/scratchpad/beacon-coordinator/manager-session-log.md",
+        },
+        previousManagerScratchpad: {
+          folderPath: "/tmp/workspace/scratchpad/atlas-coordinator",
+          sessionLogPath: "/tmp/workspace/scratchpad/atlas-coordinator/manager-session-log.md",
+        },
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      });
+      assert.strictEqual(parsed.modelSelection?.provider, "claudeAgent");
+      assert.strictEqual(
+        parsed.managerScratchpad?.sessionLogPath,
+        "/tmp/workspace/scratchpad/beacon-coordinator/manager-session-log.md",
+      );
+    }),
 );
 
 it.effect("decodes thread archive and unarchive commands", () =>

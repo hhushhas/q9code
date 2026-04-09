@@ -3,7 +3,11 @@ import type {
   OrchestrationEvent,
   OrchestrationReadModel,
 } from "@t3tools/contracts";
-import { MANAGER_INTERACTION_MODE, MANAGER_MODEL_SELECTION } from "@t3tools/shared/manager";
+import {
+  MANAGER_INTERACTION_MODE,
+  MANAGER_MODEL_SELECTION,
+  resolveManagerThreadTitle,
+} from "@t3tools/shared/manager";
 import { Effect } from "effect";
 
 import { OrchestrationCommandInvariantError } from "./Errors.ts";
@@ -155,6 +159,13 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       const modelSelection = role === "manager" ? MANAGER_MODEL_SELECTION : command.modelSelection;
       const interactionMode =
         role === "manager" ? MANAGER_INTERACTION_MODE : command.interactionMode;
+      const title =
+        role === "manager"
+          ? resolveManagerThreadTitle({
+              requestedTitle: command.title,
+              seed: `${command.projectId}:${command.threadId}:${command.createdAt}`,
+            })
+          : command.title;
 
       if (role === "manager") {
         if (managerThreadId !== null) {
@@ -201,7 +212,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         role === "manager"
           ? buildManagerScratchpad({
               workspaceRoot: project.workspaceRoot,
-              projectTitle: project.title,
+              managerTitle: title,
             })
           : null;
 
@@ -216,7 +227,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         payload: {
           threadId: command.threadId,
           projectId: command.projectId,
-          title: command.title,
+          title,
           modelSelection,
           ...(role !== "worker" ? { role } : {}),
           ...(managerThreadId !== null ? { managerThreadId } : {}),
@@ -304,6 +315,11 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         command,
         threadId: command.threadId,
       });
+      const project = yield* requireProject({
+        readModel,
+        command,
+        projectId: thread.projectId,
+      });
       const occurredAt = nowIso();
       const modelSelection =
         command.modelSelection === undefined
@@ -311,6 +327,22 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           : (thread.role ?? "worker") === "manager"
             ? MANAGER_MODEL_SELECTION
             : command.modelSelection;
+      const nextTitle =
+        command.title === undefined
+          ? undefined
+          : (thread.role ?? "worker") === "manager"
+            ? resolveManagerThreadTitle({
+                requestedTitle: command.title,
+                seed: `${thread.projectId}:${thread.id}:${occurredAt}`,
+              })
+            : command.title;
+      const nextManagerScratchpad =
+        (thread.role ?? "worker") === "manager" && nextTitle !== undefined
+          ? buildManagerScratchpad({
+              workspaceRoot: project.workspaceRoot,
+              managerTitle: nextTitle,
+            })
+          : undefined;
       return {
         ...withEventBase({
           aggregateKind: "thread",
@@ -321,8 +353,14 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         type: "thread.meta-updated",
         payload: {
           threadId: command.threadId,
-          ...(command.title !== undefined ? { title: command.title } : {}),
+          ...(nextTitle !== undefined ? { title: nextTitle } : {}),
           ...(modelSelection !== undefined ? { modelSelection } : {}),
+          ...(nextManagerScratchpad !== undefined
+            ? {
+                managerScratchpad: nextManagerScratchpad,
+                previousManagerScratchpad: thread.managerScratchpad ?? null,
+              }
+            : {}),
           ...(command.branch !== undefined ? { branch: command.branch } : {}),
           ...(command.worktreePath !== undefined ? { worktreePath: command.worktreePath } : {}),
           updatedAt: occurredAt,
@@ -573,6 +611,57 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         type: "thread.session-stop-requested",
         payload: {
           threadId: command.threadId,
+          createdAt: command.createdAt,
+        },
+      };
+    }
+
+    case "manager.worker.input.send": {
+      const managerThread = yield* requireThread({
+        readModel,
+        command,
+        threadId: command.managerThreadId,
+      });
+      const workerThread = yield* requireThread({
+        readModel,
+        command,
+        threadId: command.workerThreadId,
+      });
+
+      if ((managerThread.role ?? "worker") !== "manager") {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Thread '${command.managerThreadId}' is not a manager thread.`,
+        });
+      }
+      if (workerThread.managerThreadId !== managerThread.id) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Worker '${command.workerThreadId}' is not delegated by manager '${command.managerThreadId}'.`,
+        });
+      }
+      if ((workerThread.role ?? "worker") === "manager") {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Manager '${command.workerThreadId}' cannot be targeted as a worker.`,
+        });
+      }
+
+      return {
+        ...withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.managerThreadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+        }),
+        type: "manager.worker-input-requested",
+        payload: {
+          managerThreadId: command.managerThreadId,
+          workerThreadId: command.workerThreadId,
+          messageId: command.input.messageId,
+          text: command.input.text,
+          attachments: command.input.attachments,
+          mode: command.mode,
           createdAt: command.createdAt,
         },
       };

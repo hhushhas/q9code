@@ -1043,6 +1043,162 @@ describe("deriveWorkLogEntries context window handling", () => {
   });
 });
 
+describe("deriveWorkLogEntries manager orchestration cards", () => {
+  it("keeps manager orchestration activities visible even when they are not attached to the latest turn", () => {
+    const entries = deriveWorkLogEntries(
+      [
+        makeActivity({
+          id: "manager-worker-launched",
+          kind: "manager.worker.launched",
+          summary: 'Launched worker "Implement fix"',
+          tone: "info",
+          payload: {
+            workerId: "implement",
+            workerThreadId: "thread-implement",
+            workerTitle: "Implement fix",
+            task: "Land the fix.",
+          },
+        }),
+        makeActivity({
+          id: "current-turn-tool",
+          kind: "tool.completed",
+          turnId: "turn-2",
+          summary: "Ran command",
+          payload: {
+            itemType: "command_execution",
+            data: {
+              item: {
+                command: ["bun", "run", "lint"],
+              },
+            },
+          },
+        }),
+      ],
+      TurnId.makeUnsafe("turn-2"),
+    );
+
+    expect(entries.map((entry) => entry.id)).toEqual([
+      "manager-worker-launched",
+      "current-turn-tool",
+    ]);
+    expect(entries[0]).toMatchObject({
+      semanticKind: "manager-orchestration",
+      managerCardKind: "worker-launched",
+      detail: "Land the fix.",
+    });
+  });
+
+  it("maps the full first batch of manager timeline cards into semantic work entries", () => {
+    const entries = deriveWorkLogEntries(
+      [
+        makeActivity({
+          id: "launched",
+          createdAt: "2026-02-23T00:00:01.000Z",
+          kind: "manager.worker.launched",
+          summary: 'Launched worker "Implement"',
+          tone: "info",
+          payload: { workerId: "implement", workerTitle: "Implement", task: "Land the fix." },
+        }),
+        makeActivity({
+          id: "input-sent",
+          createdAt: "2026-02-23T00:00:02.000Z",
+          kind: "manager.worker.input.sent",
+          summary: 'Sent queued input to "Implement"',
+          tone: "info",
+          payload: { workerId: "implement", workerTitle: "Implement", text: "Keep going." },
+        }),
+        makeActivity({
+          id: "input-mode",
+          createdAt: "2026-02-23T00:00:03.000Z",
+          kind: "manager.worker.input.mode",
+          summary: 'Queued follow-up input for "Implement"',
+          tone: "info",
+          payload: { workerId: "implement", requestedMode: "queue", effectiveMode: "queue" },
+        }),
+        makeActivity({
+          id: "completed",
+          createdAt: "2026-02-23T00:00:04.000Z",
+          kind: "manager.worker.completed",
+          summary: 'Worker "Implement" completed',
+          tone: "info",
+          payload: { workerId: "implement", response: "Patch landed." },
+        }),
+        makeActivity({
+          id: "blocked",
+          createdAt: "2026-02-23T00:00:05.000Z",
+          kind: "manager.worker.blocked",
+          summary: 'Worker "Review" reported a blocker',
+          tone: "info",
+          payload: { workerId: "review", reason: "Needs a product decision." },
+        }),
+        makeActivity({
+          id: "failed",
+          createdAt: "2026-02-23T00:00:06.000Z",
+          kind: "manager.worker.failed",
+          summary: 'Worker "Release" hit an error',
+          tone: "error",
+          payload: { workerId: "release", reason: "CI failed." },
+        }),
+        makeActivity({
+          id: "needs-approval",
+          createdAt: "2026-02-23T00:00:07.000Z",
+          kind: "manager.worker.needs-approval",
+          summary: 'Worker "Release" needs approval',
+          tone: "info",
+          payload: { workerId: "release", reason: "Deploy needs approval." },
+        }),
+        makeActivity({
+          id: "needs-input",
+          createdAt: "2026-02-23T00:00:08.000Z",
+          kind: "manager.worker.needs-input",
+          summary: 'Worker "Review" needs input',
+          tone: "info",
+          payload: { workerId: "review", reason: "Pick the rollout option." },
+        }),
+        makeActivity({
+          id: "waiting",
+          createdAt: "2026-02-23T00:00:09.000Z",
+          kind: "manager.worker.waiting-on-dependencies",
+          summary: 'Worker "Release" is waiting on dependencies',
+          tone: "info",
+          payload: { workerId: "release", blockingWorkerIds: ["review"] },
+        }),
+        makeActivity({
+          id: "auto-started",
+          createdAt: "2026-02-23T00:00:10.000Z",
+          kind: "manager.worker.auto-started",
+          summary: 'Auto-started worker "Release" after dependencies cleared',
+          tone: "info",
+          payload: { workerId: "release", triggeringWorkerIds: ["review"] },
+        }),
+        makeActivity({
+          id: "status-hidden",
+          createdAt: "2026-02-23T00:00:11.000Z",
+          kind: "manager.worker.status-changed",
+          summary: 'Worker "Release" is interrupted',
+          tone: "info",
+          payload: { workerId: "release", status: "interrupted" },
+        }),
+      ],
+      TurnId.makeUnsafe("turn-2"),
+    );
+
+    expect(entries.map((entry) => entry.managerCardKind)).toEqual([
+      "worker-launched",
+      "worker-input-sent",
+      "worker-input-mode",
+      "worker-complete",
+      "worker-blocked",
+      "worker-failed",
+      "needs-approval",
+      "needs-input",
+      "waiting-on-dependencies",
+      "auto-started-after-dependencies",
+    ]);
+    expect(entries.map((entry) => entry.id)).not.toContain("status-hidden");
+  });
+});
+
 describe("hasToolActivityForTurn", () => {
   it("returns false when turn id is missing", () => {
     const activities: OrchestrationThreadActivity[] = [

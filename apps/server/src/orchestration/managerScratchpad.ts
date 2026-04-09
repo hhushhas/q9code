@@ -1,8 +1,9 @@
 import path from "node:path";
 
 import { type OrchestrationThreadManagerScratchpad } from "@t3tools/contracts";
+import { type ThreadId } from "@t3tools/contracts";
 
-function slugifySegment(value: string): string {
+export function slugifyScratchpadSegment(value: string): string {
   const slug = value
     .trim()
     .toLowerCase()
@@ -14,14 +15,23 @@ function slugifySegment(value: string): string {
 
 export function buildManagerScratchpad(input: {
   workspaceRoot: string;
-  projectTitle: string;
+  managerTitle: string;
 }): OrchestrationThreadManagerScratchpad {
-  const workspaceName = path.basename(input.workspaceRoot);
-  const projectSlug = slugifySegment(workspaceName.length > 0 ? workspaceName : input.projectTitle);
-  const folderPath = path.join(input.workspaceRoot, "scratchpad", "managers", projectSlug);
+  const folderPath = path.join(
+    input.workspaceRoot,
+    "scratchpad",
+    slugifyScratchpadSegment(input.managerTitle),
+  );
 
   return {
     folderPath,
     sessionLogPath: path.join(folderPath, "manager-session-log.md"),
   };
+}
+
+export function buildWorkerScratchpadLogPath(input: {
+  managerFolderPath: string;
+  workerThreadId: ThreadId;
+}): string {
+  return path.join(input.managerFolderPath, "workers", `${input.workerThreadId}.md`);
 }

@@ -72,10 +72,10 @@ export function ManagerThreadPanel({
   }
 
   return (
-    <div className="mx-auto mb-6 w-full max-w-[52rem] rounded-xl border border-border/60 bg-white/[0.01] p-4 font-mono transition-colors hover:border-primary/30">
+    <div className="mx-auto mb-6 w-full max-w-[52rem] rounded-xl border border-border/60 bg-card/50 p-4 font-mono transition-colors hover:border-border">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/40 pb-3 mb-3">
         <div className="flex items-center gap-3">
-          <div className="flex size-8 items-center justify-center rounded border border-primary/20 bg-primary/5 text-primary shadow-[0_0_8px_rgba(251,113,133,0.1)]">
+          <div className="flex size-8 items-center justify-center rounded border border-border/60 bg-secondary text-secondary-foreground">
             <BotIcon className="size-4" />
           </div>
           <div>
@@ -90,7 +90,7 @@ export function ManagerThreadPanel({
         <div className="flex items-center gap-2">
           <Badge
             variant="outline"
-            className="border-border/60 bg-transparent font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground/80"
+            className="border-border/60 bg-muted font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground"
           >
             {workerThreads.length} Swarm Workers
           </Badge>
@@ -100,7 +100,7 @@ export function ManagerThreadPanel({
         <Button
           size="xs"
           variant="outline"
-          className="bg-white/[0.02] font-mono text-[10px] font-bold uppercase tracking-widest hover:bg-white/[0.06]"
+          className="bg-secondary font-mono text-[10px] font-bold uppercase tracking-widest hover:bg-secondary/80"
           onClick={() => onOpenThread(managerThread.id)}
         >
           <ArrowUpRightIcon className="size-3 mt-[-1px]" />
@@ -109,7 +109,7 @@ export function ManagerThreadPanel({
         <Button
           size="xs"
           variant="outline"
-          className="bg-white/[0.02] font-mono text-[10px] font-bold uppercase tracking-widest hover:bg-white/[0.06]"
+          className="bg-secondary font-mono text-[10px] font-bold uppercase tracking-widest hover:bg-secondary/80"
           disabled={!managerThread.managerScratchpad?.folderPath}
           onClick={() => openPath(managerThread.managerScratchpad?.folderPath, "Manager folder")}
         >

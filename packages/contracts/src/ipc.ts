@@ -17,6 +17,7 @@ import type {
   GitStatusResult,
 } from "./git";
 import type { ProviderListSkillsInput, ProviderListSkillsResult } from "./providerDiscovery";
+import type { ThreadId } from "./baseSchemas";
 import type {
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
@@ -25,6 +26,7 @@ import type {
 } from "./project";
 import type {
   ServerConfig,
+  ServerManagerSessionLogReadResult,
   ServerProviderUpdatedPayload,
   ServerUpsertKeybindingResult,
 } from "./server";
@@ -179,6 +181,7 @@ export interface NativeApi {
     upsertKeybinding: (input: ServerUpsertKeybindingInput) => Promise<ServerUpsertKeybindingResult>;
     getSettings: () => Promise<ServerSettings>;
     updateSettings: (patch: ServerSettingsPatch) => Promise<ServerSettings>;
+    getManagerSessionLog: (threadId: ThreadId) => Promise<ServerManagerSessionLogReadResult>;
   };
   orchestration: {
     getSnapshot: () => Promise<OrchestrationReadModel>;

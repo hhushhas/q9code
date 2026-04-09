@@ -59,6 +59,10 @@
     "./manager": {
       "types": "./src/manager.ts",
       "import": "./src/manager.ts"
+    },
+    "./managerDependencies": {
+      "types": "./src/managerDependencies.ts",
+      "import": "./src/managerDependencies.ts"
     }
   },
   "scripts": {

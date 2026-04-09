@@ -701,6 +701,14 @@ function resolveWsRpc(body: NormalizedWsRpcRequestBody): unknown {
   if (tag === WS_METHODS.serverGetConfig) {
     return fixture.serverConfig;
   }
+  if (tag === WS_METHODS.serverGetManagerSessionLog) {
+    return {
+      threadId: THREAD_ID,
+      sessionLogPath: "/repo/project/scratchpad/managers/project/manager-session-log-2026-04-08.md",
+      contents: "",
+      readAt: NOW_ISO,
+    };
+  }
   if (tag === WS_METHODS.gitListBranches) {
     return {
       isRepo: true,

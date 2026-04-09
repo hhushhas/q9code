@@ -83,9 +83,9 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         role: "manager",
         managerThreadId: null,
         managerScratchpad: {
-          folderPath: "/tmp/project-null-options/scratchpad/managers/project-null-options",
+          folderPath: "/tmp/project-null-options/scratchpad/atlas-coordinator",
           sessionLogPath:
-            "/tmp/project-null-options/scratchpad/managers/project-null-options/manager-session-log.md",
+            "/tmp/project-null-options/scratchpad/atlas-coordinator/manager-session-log.md",
         },
         runtimeMode: "full-access",
         interactionMode: "default",
@@ -128,7 +128,7 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
       assert.strictEqual(row.managerThreadId, null);
       assert.strictEqual(
         row.managerScratchpadFolderPath,
-        "/tmp/project-null-options/scratchpad/managers/project-null-options",
+        "/tmp/project-null-options/scratchpad/atlas-coordinator",
       );
 
       const persisted = yield* threads.getById({
@@ -139,9 +139,9 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         model: "claude-opus-4-6",
       });
       assert.deepStrictEqual(Option.getOrNull(persisted)?.managerScratchpad, {
-        folderPath: "/tmp/project-null-options/scratchpad/managers/project-null-options",
+        folderPath: "/tmp/project-null-options/scratchpad/atlas-coordinator",
         sessionLogPath:
-          "/tmp/project-null-options/scratchpad/managers/project-null-options/manager-session-log.md",
+          "/tmp/project-null-options/scratchpad/atlas-coordinator/manager-session-log.md",
       });
     }),
   );

@@ -64,6 +64,9 @@ import {
 import {
   ServerConfigStreamEvent,
   ServerConfig,
+  ServerManagerSessionLogReadError,
+  ServerManagerSessionLogReadInput,
+  ServerManagerSessionLogReadResult,
   ServerLifecycleStreamEvent,
   ServerProviderUpdatedPayload,
   ServerUpsertKeybindingInput,
@@ -112,6 +115,7 @@ export const WS_METHODS = {
   serverUpsertKeybinding: "server.upsertKeybinding",
   serverGetSettings: "server.getSettings",
   serverUpdateSettings: "server.updateSettings",
+  serverGetManagerSessionLog: "server.getManagerSessionLog",
 
   // Streaming subscriptions
   subscribeOrchestrationDomainEvents: "subscribeOrchestrationDomainEvents",
@@ -147,6 +151,12 @@ export const WsServerUpdateSettingsRpc = Rpc.make(WS_METHODS.serverUpdateSetting
   payload: Schema.Struct({ patch: ServerSettingsPatch }),
   success: ServerSettings,
   error: ServerSettingsError,
+});
+
+export const WsServerGetManagerSessionLogRpc = Rpc.make(WS_METHODS.serverGetManagerSessionLog, {
+  payload: ServerManagerSessionLogReadInput,
+  success: ServerManagerSessionLogReadResult,
+  error: ServerManagerSessionLogReadError,
 });
 
 export const WsProjectsSearchEntriesRpc = Rpc.make(WS_METHODS.projectsSearchEntries, {
@@ -336,6 +346,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerUpsertKeybindingRpc,
   WsServerGetSettingsRpc,
   WsServerUpdateSettingsRpc,
+  WsServerGetManagerSessionLogRpc,
   WsProjectsSearchEntriesRpc,
   WsProjectsWriteFileRpc,
   WsProviderListSkillsRpc,

@@ -44,6 +44,18 @@ export interface WorkLogEntry {
   toolTitle?: string;
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
+  semanticKind?: "manager-orchestration";
+  managerCardKind?:
+    | "worker-launched"
+    | "worker-input-sent"
+    | "worker-input-mode"
+    | "worker-complete"
+    | "worker-blocked"
+    | "worker-failed"
+    | "needs-approval"
+    | "needs-input"
+    | "waiting-on-dependencies"
+    | "auto-started-after-dependencies";
 }
 
 interface DerivedWorkLogEntry extends WorkLogEntry {
@@ -461,11 +473,16 @@ export function deriveWorkLogEntries(
 ): WorkLogEntry[] {
   const ordered = [...activities].toSorted(compareActivitiesByOrder);
   const entries = ordered
-    .filter((activity) => (latestTurnId ? activity.turnId === latestTurnId : true))
+    .filter((activity) =>
+      latestTurnId
+        ? activity.turnId === latestTurnId || isManagerOrchestrationActivity(activity)
+        : true,
+    )
     .filter((activity) => activity.kind !== "tool.started")
     .filter((activity) => activity.kind !== "task.started" && activity.kind !== "task.completed")
     .filter((activity) => activity.kind !== "context-window.updated")
     .filter((activity) => activity.summary !== "Checkpoint captured")
+    .filter((activity) => activity.kind !== "manager.worker.status-changed")
     .filter((activity) => !isPlanBoundaryToolActivity(activity))
     .map(toDerivedWorkLogEntry);
   return collapseDerivedWorkLogEntries(entries).map(
@@ -486,6 +503,11 @@ function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity): bool
 }
 
 function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWorkLogEntry {
+  const managerEntry = toManagerDerivedWorkLogEntry(activity);
+  if (managerEntry) {
+    return managerEntry;
+  }
+
   const payload =
     activity.payload && typeof activity.payload === "object"
       ? (activity.payload as Record<string, unknown>)
@@ -528,6 +550,94 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     entry.collapseKey = collapseKey;
   }
   return entry;
+}
+
+function isManagerOrchestrationActivity(activity: OrchestrationThreadActivity): boolean {
+  return activity.kind.startsWith("manager.worker.");
+}
+
+function toManagerDerivedWorkLogEntry(
+  activity: OrchestrationThreadActivity,
+): DerivedWorkLogEntry | null {
+  const payload =
+    activity.payload && typeof activity.payload === "object"
+      ? (activity.payload as Record<string, unknown>)
+      : null;
+  const blockingWorkerIds = Array.isArray(payload?.blockingWorkerIds)
+    ? payload.blockingWorkerIds.filter((entry): entry is string => typeof entry === "string")
+    : [];
+  const triggeringWorkerIds = Array.isArray(payload?.triggeringWorkerIds)
+    ? payload.triggeringWorkerIds.filter((entry): entry is string => typeof entry === "string")
+    : [];
+
+  const managerCardKind =
+    activity.kind === "manager.worker.launched"
+      ? "worker-launched"
+      : activity.kind === "manager.worker.input.sent"
+        ? "worker-input-sent"
+        : activity.kind === "manager.worker.input.mode"
+          ? "worker-input-mode"
+          : activity.kind === "manager.worker.completed"
+            ? "worker-complete"
+            : activity.kind === "manager.worker.blocked"
+              ? "worker-blocked"
+              : activity.kind === "manager.worker.failed"
+                ? "worker-failed"
+                : activity.kind === "manager.worker.needs-approval"
+                  ? "needs-approval"
+                  : activity.kind === "manager.worker.needs-input"
+                    ? "needs-input"
+                    : activity.kind === "manager.worker.waiting-on-dependencies"
+                      ? "waiting-on-dependencies"
+                      : activity.kind === "manager.worker.auto-started"
+                        ? "auto-started-after-dependencies"
+                        : null;
+  if (!managerCardKind) {
+    return null;
+  }
+
+  const detail =
+    typeof payload?.reason === "string"
+      ? payload.reason
+      : typeof payload?.response === "string"
+        ? payload.response
+        : typeof payload?.text === "string"
+          ? payload.text
+          : typeof payload?.task === "string"
+            ? payload.task
+            : managerCardKind === "worker-input-mode"
+              ? [
+                  typeof payload?.requestedMode === "string"
+                    ? `Requested ${payload.requestedMode}`
+                    : null,
+                  typeof payload?.effectiveMode === "string"
+                    ? `effective ${payload.effectiveMode}`
+                    : null,
+                ]
+                  .filter((entry): entry is string => entry !== null)
+                  .join(", ")
+              : managerCardKind === "waiting-on-dependencies" && blockingWorkerIds.length > 0
+                ? `Waiting on ${blockingWorkerIds.join(", ")}`
+                : managerCardKind === "auto-started-after-dependencies" &&
+                    triggeringWorkerIds.length > 0
+                  ? `Dependencies cleared: ${triggeringWorkerIds.join(", ")}`
+                  : undefined;
+
+  return {
+    id: activity.id,
+    createdAt: activity.createdAt,
+    label: activity.summary,
+    tone:
+      activity.kind === "manager.worker.failed"
+        ? "error"
+        : activity.tone === "approval"
+          ? "info"
+          : activity.tone,
+    activityKind: activity.kind,
+    semanticKind: "manager-orchestration",
+    managerCardKind,
+    ...(detail ? { detail } : {}),
+  };
 }
 
 function collapseDerivedWorkLogEntries(
