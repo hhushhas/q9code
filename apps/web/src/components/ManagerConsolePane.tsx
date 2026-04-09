@@ -6,7 +6,6 @@ import {
 } from "@t3tools/contracts";
 import {
   extractManagerChecklist,
-  MANAGER_CHECKLIST_FENCE,
   MANAGER_WORKER_MODEL_CAPABILITIES,
   MANAGER_WORKER_MODEL_PRESETS,
   MANAGER_WORKER_MODEL_SELECTION,
@@ -570,73 +569,70 @@ export function ManagerConsolePane({
           </div>
         </section>
 
-        <section className="space-y-3">
+        <section className="space-y-2">
           <div className="flex items-center justify-between">
             <h3 className="label-micro text-muted-foreground/80">Checklist</h3>
-            <Button
-              size="xs"
-              variant="outline"
+            <button
+              type="button"
               onClick={() => void loadManagerChecklist()}
               disabled={checklistLoading}
-              className="font-mono label-tiny text-muted-foreground/80"
+              className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-foreground transition-colors"
             >
               <RefreshCwIcon className={`size-3 ${checklistLoading ? "animate-spin" : ""}`} />
               Refresh
-            </Button>
+            </button>
           </div>
-          <div className="rounded-xl border border-border/60 bg-card p-3">
+          <div className="space-y-1.5">
             {checklistError ? (
               <div className="text-xs text-destructive">{checklistError}</div>
             ) : managerChecklist ? (
-              <div className="space-y-2">
+              <>
                 {managerChecklist.items.map((item) => (
                   <div
                     key={`${item.text}-${item.checked ? "done" : "todo"}`}
-                    className="flex gap-2"
+                    className="flex gap-2 items-start"
                   >
                     <span
-                      className={`mt-0.5 inline-flex size-4 items-center justify-center rounded-md border text-[10px] ${
+                      className={`mt-0.5 inline-flex size-3.5 items-center justify-center rounded border text-[9px] ${
                         item.checked
                           ? "border-success/40 bg-success/15 text-success-foreground"
                           : "border-border text-muted-foreground"
                       }`}
                     >
-                      {item.checked ? "x" : ""}
+                      {item.checked ? "✓" : ""}
                     </span>
                     <span
-                      className={`text-sm ${
-                        item.checked ? "text-muted-foreground line-through" : "text-foreground"
+                      className={`text-xs leading-relaxed ${
+                        item.checked
+                          ? "text-muted-foreground/60 line-through"
+                          : "text-foreground/90"
                       }`}
                     >
                       {item.text}
                     </span>
                   </div>
                 ))}
-                <div className="pt-1 label-tiny text-muted-foreground">
-                  Parsed from the latest <code>{MANAGER_CHECKLIST_FENCE}</code> block
+                <div className="pt-1 text-[10px] text-muted-foreground/40">
                   {checklistReadAt
-                    ? ` · refreshed ${new Date(checklistReadAt).toLocaleTimeString()}`
+                    ? `Updated ${new Date(checklistReadAt).toLocaleTimeString()}`
                     : ""}
                 </div>
-              </div>
+              </>
             ) : (
-              <div className="space-y-1 text-xs text-muted-foreground">
-                <div>No dedicated checklist block found in the manager session log yet.</div>
-                <div>
-                  Add a fenced <code>{MANAGER_CHECKLIST_FENCE}</code> block to make it visible here.
-                </div>
+              <div className="space-y-1 text-[11px] text-muted-foreground/60">
+                <div>No checklist block found in session log.</div>
               </div>
             )}
           </div>
         </section>
 
         {/* Workers */}
-        <section className="space-y-3">
-          <h3 className="label-micro text-muted-foreground/80">Delegated Workers</h3>
-          <div className="space-y-1.5">
+        <section className="space-y-2">
+          <h3 className="label-micro text-muted-foreground/80">Workers</h3>
+          <div className="space-y-1">
             {workerThreads.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border/60 bg-muted px-3 py-3 text-center text-xs text-muted-foreground">
-                No active workers.
+              <div className="rounded-lg border border-dashed border-border/60 bg-muted px-2 py-2 text-center text-[11px] text-muted-foreground">
+                No active workers
               </div>
             ) : (
               workerThreads.map((thread) => {
@@ -651,7 +647,7 @@ export function ManagerConsolePane({
                 return (
                   <div
                     key={thread.id}
-                    className={`flex w-full items-center justify-between rounded-xl border p-2.5 transition-colors hover:bg-accent/30 ${
+                    className={`flex w-full items-center justify-between rounded-lg border py-1.5 px-2 transition-colors hover:bg-accent/30 ${
                       isBlocked ? "border-warning/40 bg-warning/10" : "border-border/60 bg-card"
                     }`}
                   >
@@ -660,7 +656,7 @@ export function ManagerConsolePane({
                       onClick={() => onOpenThread(thread.id)}
                       className="min-w-0 flex-1 text-left"
                     >
-                      <div className="flex items-center gap-2.5 truncate">
+                      <div className="flex items-center gap-2 truncate">
                         <span
                           className={`status-dot ${
                             isBlocked
@@ -671,50 +667,45 @@ export function ManagerConsolePane({
                           }`}
                         />
                         <span
-                          className={`truncate text-sm font-medium ${
+                          className={`truncate text-xs font-medium ${
                             isBlocked ? "text-destructive" : "text-foreground"
                           }`}
                         >
                           {thread.title}
                         </span>
                       </div>
-                      <div className="mt-1 flex items-center gap-2">
+                      <div className="mt-0.5 flex items-center gap-1.5">
                         <span
-                          className={`font-mono label-tiny ${
-                            isBlocked ? "font-bold text-destructive" : "text-muted-foreground"
+                          className={`text-[10px] ${
+                            isBlocked ? "font-medium text-destructive" : "text-muted-foreground/70"
                           }`}
                         >
                           {statusLabelForThread(thread)}
                         </span>
                         {outcome ? (
-                          <Badge
-                            variant={
+                          <span
+                            className={`text-[9px] ${
                               outcome.tone === "success"
-                                ? "success"
+                                ? "text-success-foreground"
                                 : outcome.tone === "warning"
-                                  ? "warning"
+                                  ? "text-warning-foreground"
                                   : outcome.tone === "error"
-                                    ? "error"
-                                    : "outline"
-                            }
-                            className="label-tiny font-mono"
+                                    ? "text-destructive"
+                                    : "text-muted-foreground"
+                            }`}
                           >
                             {outcome.label}
-                          </Badge>
+                          </span>
                         ) : null}
                       </div>
                     </button>
-                    <div className="ml-3 shrink-0">
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        className="font-mono label-tiny text-muted-foreground"
-                        onClick={() => openWorkerInputDialog(thread)}
-                      >
-                        <MessageSquareIcon className="size-3 -mt-px" />
-                        Input
-                      </Button>
-                    </div>
+                    <button
+                      type="button"
+                      className="ml-2 shrink-0 inline-flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-foreground transition-colors"
+                      onClick={() => openWorkerInputDialog(thread)}
+                    >
+                      <MessageSquareIcon className="size-3" />
+                    </button>
                   </div>
                 );
               })
@@ -755,7 +746,7 @@ export function ManagerConsolePane({
       </div>
 
       <Dialog open={delegateDialogOpen} onOpenChange={setDelegateDialogOpen}>
-        <DialogPopup className="max-w-xl">
+        <DialogPopup className="max-w-xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <div className="flex items-center gap-2.5">
               <div className="flex size-8 items-center justify-center rounded-lg border border-border/60 bg-secondary text-foreground">
@@ -772,7 +763,7 @@ export function ManagerConsolePane({
             </div>
           </DialogHeader>
           <form onSubmit={launchDelegatedWorker}>
-            <DialogPanel className="space-y-6 py-6 font-mono">
+            <DialogPanel className="space-y-6 py-6 font-mono overflow-y-auto max-h-[60vh] sm:max-h-[50vh]">
               <Field className="space-y-2">
                 <FieldLabel className="label-tiny text-muted-foreground">
                   Worker Identity

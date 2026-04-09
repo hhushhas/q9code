@@ -1,4 +1,5 @@
-import type { Thread, ThreadSession } from "../types";
+import { isLatestTurnSettled } from "../session-logic";
+import type { Thread } from "../types";
 
 export interface CompletedThreadCandidate {
   threadId: Thread["id"];
@@ -6,12 +7,6 @@ export interface CompletedThreadCandidate {
   title: string;
   completedAt: string;
   assistantSummary: string | null;
-}
-
-type ThreadSessionStatus = ThreadSession["status"];
-
-function isRunningStatus(status: ThreadSessionStatus | null | undefined): boolean {
-  return status === "running" || status === "connecting";
 }
 
 function summarizeLatestAssistantMessage(thread: Thread): string | null {
@@ -41,15 +36,21 @@ export function collectCompletedThreadCandidates(
     if (!previousThread) {
       continue;
     }
-    if (!isRunningStatus(previousThread.session?.status)) {
-      continue;
-    }
-    if (isRunningStatus(thread.session?.status)) {
+
+    const previousSettled = isLatestTurnSettled(previousThread.latestTurn, previousThread.session);
+    const nextSettled = isLatestTurnSettled(thread.latestTurn, thread.session);
+    if (!nextSettled) {
       continue;
     }
 
     const completedAt = thread.latestTurn?.completedAt;
-    if (!completedAt || completedAt === previousThread.latestTurn?.completedAt) {
+    if (!completedAt) {
+      continue;
+    }
+
+    const turnChanged = previousThread.latestTurn?.turnId !== thread.latestTurn?.turnId;
+    const completedAtChanged = previousThread.latestTurn?.completedAt !== completedAt;
+    if (!turnChanged && !completedAtChanged && previousSettled) {
       continue;
     }
 

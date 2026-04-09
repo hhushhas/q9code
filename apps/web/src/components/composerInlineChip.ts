@@ -2,7 +2,7 @@ export const COMPOSER_INLINE_CHIP_CLASS_NAME =
   "inline-flex max-w-full select-none items-center gap-1 rounded-md border border-border/70 bg-accent/40 px-1.5 py-px font-medium text-[12px] leading-[1.1] text-foreground align-middle";
 
 export const COMPOSER_INLINE_SKILL_CHIP_CLASS_NAME =
-  "inline-flex max-w-full select-none items-center gap-1 rounded-md bg-blue-600/8 px-1.5 py-0.5 font-medium text-[11.5px] leading-[1.1] text-blue-700 align-middle dark:bg-blue-500/10 dark:text-blue-400";
+  "inline-flex select-none items-center gap-1 rounded-md bg-blue-600/8 px-1.5 py-0.5 font-medium text-[11.5px] leading-[1.1] text-blue-700 align-middle dark:bg-blue-500/10 dark:text-blue-400";
 
 export const COMPOSER_INLINE_SKILL_CHIP_ICON_CLASS_NAME = "size-3.5 shrink-0";
 
