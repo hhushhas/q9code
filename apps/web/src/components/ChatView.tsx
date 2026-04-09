@@ -4098,7 +4098,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
       toastManager.add({
         type: "error",
         title: "Sync failed",
-        description: error instanceof Error ? error.message : "Unexpected error during outcome sync.",
+        description:
+          error instanceof Error ? error.message : "Unexpected error during outcome sync.",
       });
     }
   }, [activeThread]);
@@ -4216,11 +4217,16 @@ export default function ChatView({ threadId }: ChatViewProps) {
           <aside
             className={cn(
               "hidden min-h-0 shrink-0 border-r border-border/70 bg-background/50 transition-[width,margin] duration-300 ease-in-out lg:block overflow-visible relative",
-              consoleCollapsed ? "w-0 border-r-0" : ""
+              consoleCollapsed ? "w-0 border-r-0" : "",
             )}
             style={{ width: consoleCollapsed ? 0 : consoleWidth }}
           >
-            <div className={cn("h-full overflow-y-auto p-4 transition-opacity duration-200", consoleCollapsed ? "opacity-0 pointer-events-none" : "opacity-100")}>
+            <div
+              className={cn(
+                "h-full overflow-y-auto p-4 transition-opacity duration-200",
+                consoleCollapsed ? "opacity-0 pointer-events-none" : "opacity-100",
+              )}
+            >
               <ManagerConsolePane
                 managerThread={activeThread}
                 activeProject={activeProject}
@@ -4239,17 +4245,17 @@ export default function ChatView({ threadId }: ChatViewProps) {
                 onMouseDown={startResizingConsole}
                 className={cn(
                   "absolute top-0 right-0 w-1 h-full cursor-col-resize z-50 transition-colors hover:bg-primary/40",
-                  isResizingConsole ? "bg-primary/60" : ""
+                  isResizingConsole ? "bg-primary/60" : "",
                 )}
               />
             )}
-            
+
             {/* Toggle Button */}
             <button
               onClick={() => setConsoleCollapsed(!consoleCollapsed)}
               className={cn(
                 "absolute top-1/2 -translate-y-1/2 translate-x-1.5 size-6 rounded-full border border-border bg-card/80 backdrop-blur-md flex items-center justify-center text-muted-foreground hover:text-primary transition-all z-[60] shadow-sm",
-                consoleCollapsed ? "left-0 rotate-180" : "right-0"
+                consoleCollapsed ? "left-0 rotate-180" : "right-0",
               )}
             >
               <ChevronLeftIcon className="size-3.5" />
@@ -4703,7 +4709,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
                           pendingAction={
                             activePendingProgress
                               ? {
-
                                   questionIndex: activePendingProgress.questionIndex,
                                   isLastQuestion: activePendingProgress.isLastQuestion,
                                   canAdvance: activePendingProgress.canAdvance,

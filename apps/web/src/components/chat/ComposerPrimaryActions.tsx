@@ -145,7 +145,10 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
             {isConnecting || isSendBusy ? "Sending..." : "Refine"}
           </Button>
         ) : (
-          <div data-chat-composer-implement-actions="true" className="flex items-center justify-end">
+          <div
+            data-chat-composer-implement-actions="true"
+            className="flex items-center justify-end"
+          >
             <Button
               type="submit"
               size="sm"
