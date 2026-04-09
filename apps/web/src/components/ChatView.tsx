@@ -25,7 +25,7 @@ import {
 import {
   extractManagerDelegation,
   isManagerInternalAlert,
-  stripManagerDelegation,
+  stripManagerControlMarkup,
 } from "@t3tools/shared/manager";
 import { applyClaudePromptEffortPrefix, normalizeModelSlug } from "@t3tools/shared/model";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
@@ -1344,7 +1344,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       return message;
     }
 
-    const visibleText = stripManagerDelegation(message.text);
+    const visibleText = stripManagerControlMarkup(message.text);
     if (visibleText === message.text) {
       return message;
     }

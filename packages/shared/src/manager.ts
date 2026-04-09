@@ -7,6 +7,9 @@ export const MANAGER_DELEGATION_CLOSE_TAG = `</${MANAGER_DELEGATION_TAG}>`;
 export const MANAGER_INTERNAL_ALERT_TAG = "manager_internal_alert";
 export const MANAGER_INTERNAL_ALERT_OPEN_TAG = `<${MANAGER_INTERNAL_ALERT_TAG}>`;
 export const MANAGER_INTERNAL_ALERT_CLOSE_TAG = `</${MANAGER_INTERNAL_ALERT_TAG}>`;
+export const WORKER_FINAL_TAG = "worker_final";
+export const WORKER_FINAL_OPEN_TAG = `<${WORKER_FINAL_TAG}>`;
+export const WORKER_FINAL_CLOSE_TAG = `</${WORKER_FINAL_TAG}>`;
 export const MANAGER_MODEL_SELECTION = {
   provider: "codex",
   model: "gpt-5.4",
@@ -23,6 +26,10 @@ const MANAGER_DELEGATION_BLOCK_RE = new RegExp(
 );
 const MANAGER_INTERNAL_ALERT_BLOCK_RE = new RegExp(
   `${MANAGER_INTERNAL_ALERT_OPEN_TAG}\\s*([\\s\\S]*?)\\s*${MANAGER_INTERNAL_ALERT_CLOSE_TAG}`,
+  "gi",
+);
+const WORKER_FINAL_BLOCK_RE = new RegExp(
+  `${WORKER_FINAL_OPEN_TAG}\\s*([\\s\\S]*?)\\s*${WORKER_FINAL_CLOSE_TAG}`,
   "gi",
 );
 
@@ -136,6 +143,28 @@ export function stripManagerDelegation(text: string): string {
     .replaceAll(MANAGER_DELEGATION_BLOCK_RE, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+export function extractWorkerFinal(text: string): string | null {
+  const matches = [...text.matchAll(WORKER_FINAL_BLOCK_RE)];
+  const block = matches.at(-1)?.[1];
+  if (!block) {
+    return null;
+  }
+
+  const normalized = block.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+export function stripWorkerFinal(text: string): string {
+  return text
+    .replaceAll(WORKER_FINAL_BLOCK_RE, (_, content: string) => content.trim())
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function stripManagerControlMarkup(text: string): string {
+  return stripWorkerFinal(stripManagerDelegation(text));
 }
 
 export function extractManagerInternalAlert(text: string) {

@@ -8,6 +8,7 @@ import {
 } from "@t3tools/contracts";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import {
+  extractWorkerFinal,
   extractManagerDelegation,
   extractManagerInternalAlert,
   formatManagerInternalAlert,
@@ -15,7 +16,7 @@ import {
   MANAGER_MODEL_SELECTION,
   MANAGER_WORKER_MODEL_SELECTION,
   type ManagerInternalAlert,
-  stripManagerDelegation,
+  stripManagerControlMarkup,
 } from "@t3tools/shared/manager";
 import { Effect, FileSystem, Layer, Path, Stream } from "effect";
 
@@ -362,7 +363,7 @@ const make = Effect.gen(function* () {
           return;
         }
 
-        const visibleResponse = stripManagerDelegation(assistantMessage.text);
+        const visibleResponse = stripManagerControlMarkup(assistantMessage.text);
         if (visibleResponse.length > 0) {
           yield* appendToManagerLog({
             threadId: context.thread.id,
@@ -402,6 +403,11 @@ const make = Effect.gen(function* () {
           return;
         }
 
+        const workerFinalResponse = extractWorkerFinal(assistantMessage.text);
+        if (!workerFinalResponse) {
+          return;
+        }
+
         yield* appendManagerActivity({
           managerThreadId: context.managerThread.id,
           kind: "manager.worker.completed",
@@ -409,7 +415,7 @@ const make = Effect.gen(function* () {
           payload: {
             workerThreadId: context.thread.id,
             workerTitle: context.thread.title,
-            response: truncateText(visibleResponse, 280),
+            response: truncateText(workerFinalResponse, 280),
           },
           createdAt: assistantMessage.updatedAt,
         });
@@ -420,7 +426,7 @@ const make = Effect.gen(function* () {
             workerThreadId: context.thread.id,
             workerTitle: context.thread.title,
             summary: "Completed the assigned work.",
-            details: truncateText(visibleResponse, 280),
+            details: truncateText(workerFinalResponse, 280),
             createdAt: assistantMessage.updatedAt,
           },
         });

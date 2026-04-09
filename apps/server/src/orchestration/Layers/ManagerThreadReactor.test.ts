@@ -3,7 +3,11 @@ import os from "node:os";
 import path from "node:path";
 
 import { CommandId, MessageId, ThreadId, TurnId } from "@t3tools/contracts";
-import { extractManagerInternalAlert } from "@t3tools/shared/manager";
+import {
+  extractManagerInternalAlert,
+  WORKER_FINAL_CLOSE_TAG,
+  WORKER_FINAL_OPEN_TAG,
+} from "@t3tools/shared/manager";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Exit, Layer, ManagedRuntime, Scope } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
@@ -220,7 +224,7 @@ describe("ManagerThreadReactor", () => {
     expect(logContents).toContain("Worker created: Reconnect patch");
   });
 
-  it("records worker completions back onto the manager thread activity log", async () => {
+  it("does not wake the manager for ordinary worker assistant responses", async () => {
     const harness = await createHarness();
     const createdAt = new Date().toISOString();
 
@@ -260,6 +264,90 @@ describe("ManagerThreadReactor", () => {
         commandId: CommandId.makeUnsafe("cmd-worker-assistant-complete"),
         threadId: ThreadId.makeUnsafe("thread-worker"),
         messageId: asMessageId("assistant-message-worker"),
+        createdAt,
+      }),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const readModel = await Effect.runPromise(harness.engine.getReadModel());
+    const manager = readModel.threads.find(
+      (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+    );
+    expect(
+      (manager?.activities ?? []).some((activity) => activity.kind === "manager.worker.completed"),
+    ).toBe(false);
+    expect(
+      (manager?.messages ?? []).some(
+        (message) => message.role === "user" && extractManagerInternalAlert(message.text),
+      ),
+    ).toBe(false);
+
+    const logPath = path.join(
+      harness.workspaceRoot,
+      "scratchpad",
+      "managers",
+      path.basename(harness.workspaceRoot),
+      "manager-session-log.md",
+    );
+    await waitFor(
+      async () =>
+        fs.existsSync(logPath) &&
+        fs
+          .readFileSync(logPath, "utf8")
+          .includes('Worker result from "Reconnect worker": Reconnect flow patched and verified.'),
+    );
+    expect(fs.readFileSync(logPath, "utf8")).toContain(
+      'Worker result from "Reconnect worker": Reconnect flow patched and verified.',
+    );
+  });
+
+  it("records tagged worker finals back onto the manager thread activity log", async () => {
+    const harness = await createHarness();
+    const createdAt = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.makeUnsafe("cmd-thread-create-worker-reactor-final"),
+        threadId: ThreadId.makeUnsafe("thread-worker-final"),
+        projectId: asProjectId("project-1"),
+        title: "Reconnect worker",
+        modelSelection: {
+          provider: "codex",
+          model: "gpt-5.4",
+        },
+        role: "worker",
+        managerThreadId: ThreadId.makeUnsafe("thread-manager"),
+        interactionMode: "default",
+        runtimeMode: "full-access",
+        branch: null,
+        worktreePath: null,
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.makeUnsafe("cmd-worker-assistant-delta-final"),
+        threadId: ThreadId.makeUnsafe("thread-worker-final"),
+        messageId: asMessageId("assistant-message-worker-final"),
+        delta: [
+          "Progress note before the final handoff.",
+          "",
+          WORKER_FINAL_OPEN_TAG,
+          "Reconnect flow patched and verified.",
+          WORKER_FINAL_CLOSE_TAG,
+        ].join("\n"),
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.complete",
+        commandId: CommandId.makeUnsafe("cmd-worker-assistant-complete-final"),
+        threadId: ThreadId.makeUnsafe("thread-worker-final"),
+        messageId: asMessageId("assistant-message-worker-final"),
         createdAt,
       }),
     );
@@ -337,7 +425,11 @@ describe("ManagerThreadReactor", () => {
         commandId: CommandId.makeUnsafe("cmd-queued-worker-assistant-delta"),
         threadId: ThreadId.makeUnsafe("thread-worker-queued"),
         messageId: asMessageId("assistant-message-worker-queued"),
-        delta: "Queued worker finished its task.",
+        delta: [
+          WORKER_FINAL_OPEN_TAG,
+          "Queued worker finished its task.",
+          WORKER_FINAL_CLOSE_TAG,
+        ].join("\n"),
         createdAt,
       }),
     );

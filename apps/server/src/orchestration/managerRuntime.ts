@@ -3,6 +3,8 @@ import {
   extractManagerInternalAlert,
   MANAGER_DELEGATION_CLOSE_TAG,
   MANAGER_DELEGATION_OPEN_TAG,
+  WORKER_FINAL_CLOSE_TAG,
+  WORKER_FINAL_OPEN_TAG,
 } from "@t3tools/shared/manager";
 
 function findThread(
@@ -104,6 +106,12 @@ export function buildWorkerTurnInput(input: {
       ? `Manager folder: ${managerScratchpad.folderPath}\nManager session log: ${managerScratchpad.sessionLogPath}`
       : "",
     "The app records lifecycle updates in the manager log automatically. You may also read it if context is needed.",
+    "Normal progress updates stay on the worker thread and should not be treated as completion.",
+    "When you are ready to deliver the final manager-facing handoff, wrap that final response in exactly one worker-final block so the manager is notified:",
+    WORKER_FINAL_OPEN_TAG,
+    "Final outcome, verification, blockers, and any concrete next step.",
+    WORKER_FINAL_CLOSE_TAG,
+    "Do not use the worker-final block for intermediary updates.",
     `Assigned task:\n${input.userMessageText}`,
   ]
     .filter((section) => section.trim().length > 0)
