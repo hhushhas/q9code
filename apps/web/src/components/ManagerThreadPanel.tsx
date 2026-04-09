@@ -7,7 +7,6 @@ import { type Project, type Thread } from "../types";
 import { toastManager } from "./ui/toast";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 
 function sortWorkers(left: Thread, right: Thread): number {
   const leftUpdatedAt = left.updatedAt ?? left.createdAt;

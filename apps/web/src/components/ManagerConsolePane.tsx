@@ -1,21 +1,11 @@
 import { ThreadId } from "@t3tools/contracts";
 import { MANAGER_WORKER_MODEL_SELECTION } from "@t3tools/shared/manager";
-import {
-  ActivityIcon,
-  BotIcon,
-  ChevronLeftIcon,
-  FileTextIcon,
-  FolderOpenIcon,
-  PencilIcon,
-  PlusIcon,
-} from "lucide-react";
+import { ActivityIcon, FileTextIcon, FolderOpenIcon, PencilIcon, PlusIcon } from "lucide-react";
 import { useCallback, useMemo, useState, type FormEvent } from "react";
 
 import { newCommandId, newMessageId, newThreadId } from "~/lib/utils";
 import { readNativeApi } from "~/nativeApi";
-import { formatRelativeTimeLabel } from "../timestampFormat";
 import { type Project, type Thread } from "../types";
-import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -311,7 +301,9 @@ export function ManagerConsolePane({
             <button
               type="button"
               disabled={!managerThread.managerScratchpad?.sessionLogPath}
-              onClick={() => openPath(managerThread.managerScratchpad?.sessionLogPath, "Manager log")}
+              onClick={() =>
+                openPath(managerThread.managerScratchpad?.sessionLogPath, "Manager log")
+              }
               className="group flex w-full items-center justify-between rounded-lg border border-border/40 bg-white/[0.02] p-2.5 transition-all hover:border-primary/30 hover:bg-white/[0.05]"
             >
               <div className="flex items-center gap-3">
@@ -332,7 +324,9 @@ export function ManagerConsolePane({
             <button
               type="button"
               disabled={!managerThread.managerScratchpad?.folderPath}
-              onClick={() => openPath(managerThread.managerScratchpad?.folderPath, "Manager folder")}
+              onClick={() =>
+                openPath(managerThread.managerScratchpad?.folderPath, "Manager folder")
+              }
               className="group flex w-full items-center justify-between rounded-lg border border-border/40 bg-white/[0.02] p-2.5 transition-all hover:border-primary/30 hover:bg-white/[0.05]"
             >
               <div className="flex items-center gap-3">
@@ -455,7 +449,9 @@ export function ManagerConsolePane({
                 <PlusIcon className="size-4" />
               </div>
               <div>
-                <DialogTitle className="font-display text-lg font-medium">Delegate Worker</DialogTitle>
+                <DialogTitle className="font-display text-lg font-medium">
+                  Delegate Worker
+                </DialogTitle>
                 <DialogDescription className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground/70">
                   Launch bounded execution
                 </DialogDescription>
@@ -523,7 +519,9 @@ export function ManagerConsolePane({
                 <PencilIcon className="size-4" />
               </div>
               <div>
-                <DialogTitle className="font-display text-lg font-medium">Identify Coordinator</DialogTitle>
+                <DialogTitle className="font-display text-lg font-medium">
+                  Identify Coordinator
+                </DialogTitle>
                 <DialogDescription className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground/70">
                   Rename manager entity
                 </DialogDescription>
