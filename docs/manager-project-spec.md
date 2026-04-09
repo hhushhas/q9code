@@ -152,32 +152,72 @@ Recommended presentation:
 - worker rows use lighter visual weight
 - worker metadata is compact: status, last activity, branch/worktree if relevant
 
-### Main Conversation Area
+### Main Conversation Area: The Split Workstation
 
-When the manager is open, the main pane should feel like the control center for the project, and the manager overview should remain visible at all times.
+When a Manager thread is active, the main pane transitions into a **Split Workstation** layout. This layout physically separates project-level monitoring (Console) from strategic communication (Conversation), ensuring the manager's overview is always actionable and persistent.
 
-Recommended sections:
+#### 1. Unified Manager Header
 
-1. Persistent manager overview
-2. Manager conversation timeline
-3. Current worker strip or table
-4. Sacred memory shortcuts
-5. Delegation composer state
+The top application header reflects the project context. The "Manager Console" label is placed directly next to the project name to save vertical space.
 
-The persistent manager overview should summarize, at a glance:
+- **Project Name**: Left-aligned, primary weight.
+- **Manager Badge**: A distinct, high-contrast badge (e.g., `#fb7185` background) indicating "Manager Console" or "Coordinator Mode."
+- **Actions**: "Add Action," "Open," and "Commit & Push" remain pinned to the right.
 
-- active workers
-- blocked workers
-- recently completed workers
-- outstanding manager decisions
-- whether the manager is waiting on the human or on workers
+#### 2. Project Console (Left Pane)
 
-Behavior:
+A persistent, high-density dashboard that stays visible while the conversation scrolls.
 
-- the manager conversation remains the default focus
-- worker activity appears as summarized operational context, not as primary conversation clutter
-- the sacred log and manager folder should be one click away
-- important worker completions should surface back into the manager view without requiring the human to manually ping the manager
+- **Semantics**:
+  - **Resizable**: The pane can be horizontally resized via a drag-divider.
+  - **Collapsible**: A dedicated toggle allows the console to be hidden, expanding the conversation to full width.
+- **Content Sections**:
+  - **Project Swarm (Health)**: A summary of worker states (e.g., "2 Active," "1 Blocked").
+  - **Sacred Memory**: Direct shortcuts to `session-log.md` and the `scratchpad/` folder.
+  - **Worker List**: A vertical stack of delegated workers with their status indicators (Pulse for working, Red for blocked).
+  - **Quick Actions**: Buttons for "+ Delegate Worker" and "Reconcile Logs."
+
+#### 3. Manager Conversation (Right Pane)
+
+The primary steering surface where the human interacts with the coordinator.
+
+- **Conversation Feed**: Summarized worker activity (completion chips) is injected into the timeline as rich cards, not raw text.
+- **Delegation Composer**: A specialized input area locked to the Coordinator model (`GPT-5.4`).
+
+#### 4. ASCII Mockup (Split View)
+
+```text
++---------------------------------------------------------------------------------------+
+|  T3 Code [ALPHA] | Project: hasan-hq [ MANAGER CONSOLE ]            [ Open ] [ Push ] |
++------------------+--------------------------------------------------------------------+
+| PROJECTS     + |                                                                    |
+| > hasan-hq     | [ PROJECT CONSOLE ] (30%)     | [ MANAGER CONVERSATION ] (70%)     |
+|   [*] MGR      | <Resizers/Toggle Available>    |                                    |
+|   [ ] worker-1 |                                | [BOT] Worker 'auth-patch' is       |
+|   [ ] worker-2 | [ PROJECT SWARM ]              | approximately 80% done.            |
+|                | 2 Active | 1 Blocked           |                                    |
+| > t3code       |                                | [USER] What is blocking 'db-fix'?  |
+|   [*] MGR      | [ SACRED MEMORY ]              |                                    |
+|                | [F] session-log.md             | [BOT] 'db-fix' needs a schema      |
+|                | [D] scratchpad/                | migration approval.                |
+|                |                                |                                    |
+|                | [ WORKERS ]                    | +--------------------------------+ |
+|                | @ auth-patch   [ WORKING ]     | | [ WORKER ACTIVITY ]            | |
+|                | ! db-fix       [ BLOCKED ]     | | 'ui-polish' finished tests.    | |
+|                | . ui-polish    [ IDLE    ]     | | [ View Output ] [ Summarize ]  | |
+|                |                                | +--------------------------------+ |
+|                | [ ACTIONS ]                    |                                    |
+|                | [ + DELEGATE WORKER ]          | [ DELEGATION COMPOSER ]            |
+|                | [ RECONCILE LOGS    ]          | [ Ask for a change...        ] [^] |
++----------------+--------------------------------+------------------------------------+
+```
+
+#### 5. Behavioral Rules
+
+- **One-Click Recovery**: Clicking a "Sacred Memory" shortcut opens the file/folder in the user's preferred editor immediately.
+- **Status Persistence**: If a worker becomes "Blocked," the corresponding indicator in the Project Console must turn red and optionally pulse to alert the manager.
+- **Summarized Operational Context**: Detailed worker tool-calls are hidden from the Manager timeline by default; only managerial-level summaries and "Worker Activity" chips are shown.
+- **No Plan Mode**: The "Plan Mode" toggle is hidden in the Manager thread to emphasize steering over local execution.
 
 ### Worker Visibility
 

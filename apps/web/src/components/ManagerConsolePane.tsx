@@ -3,6 +3,7 @@ import { MANAGER_WORKER_MODEL_SELECTION } from "@t3tools/shared/manager";
 import {
   ActivityIcon,
   BotIcon,
+  ChevronLeftIcon,
   FileTextIcon,
   FolderOpenIcon,
   PencilIcon,
@@ -16,7 +17,6 @@ import { formatRelativeTimeLabel } from "../timestampFormat";
 import { type Project, type Thread } from "../types";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import {
   Dialog,
   DialogDescription,
@@ -28,7 +28,6 @@ import {
 } from "./ui/dialog";
 import { Field, FieldDescription, FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
-import { Separator } from "./ui/separator";
 import { Textarea } from "./ui/textarea";
 import { toastManager } from "./ui/toast";
 
@@ -118,15 +117,6 @@ export function ManagerConsolePane({
       completed,
     };
   }, [workerThreads]);
-
-  const managerActivities = useMemo(
-    () =>
-      (managerThread.activities ?? [])
-        .filter((activity) => activity.kind.startsWith("manager."))
-        .slice(-8)
-        .reverse(),
-    [managerThread.activities],
-  );
 
   const openPath = useCallback(async (targetPath: string | null | undefined, label: string) => {
     const api = readNativeApi();
@@ -268,254 +258,257 @@ export function ManagerConsolePane({
   }, [managerThread.id, managerThread.title, managerTitleDraft]);
 
   return (
-    <>
-      <Card className="border-border/80 bg-card/92 shadow-none">
-        <CardHeader className="gap-3 border-b border-border/70 px-4 py-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                Project Manager
+    <div className="flex h-full flex-col font-mono">
+      <div className="flex-1 space-y-8 overflow-y-auto px-1 py-1 pr-3">
+        {/* Swarm Snapshot */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/80">
+              Project Swarm
+            </h3>
+            <span className="text-[10px] font-bold text-primary">{workerStats.total} WORKERS</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-lg border border-border/40 bg-white/[0.02] p-3 transition-colors hover:border-border/60">
+              <div className="text-[9px] uppercase tracking-widest text-muted-foreground/60">
+                Active
               </div>
-              <CardTitle className="mt-1 flex items-center gap-2 font-mono text-base font-medium">
-                <BotIcon className="size-4 text-primary" />
-                {managerThread.title}
-              </CardTitle>
-              <CardDescription className="mt-1 max-w-sm font-mono text-xs text-muted-foreground">
-                One control plane for the project. Keep continuity in the sacred log, review worker
-                status at a glance, and delegate bounded execution when needed.
-              </CardDescription>
+              <div className="mt-1 font-display text-lg font-semibold text-foreground">
+                {workerStats.running}
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge
-                variant="outline"
-                className="border-border/70 bg-transparent font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground"
+            <div
+              className={`rounded-lg border p-3 transition-colors ${
+                workerStats.blocked > 0
+                  ? "border-rose-500/30 bg-rose-500/5 hover:border-rose-500/50"
+                  : "border-border/40 bg-white/[0.02] hover:border-border/60"
+              }`}
+            >
+              <div
+                className={`text-[9px] uppercase tracking-widest ${
+                  workerStats.blocked > 0 ? "text-rose-400" : "text-muted-foreground/60"
+                }`}
               >
-                {activeProject.name}
-              </Badge>
-              <Badge
-                variant="outline"
-                className="border-border/70 bg-transparent font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground"
+                Blocked
+              </div>
+              <div
+                className={`mt-1 font-display text-lg font-semibold ${
+                  workerStats.blocked > 0 ? "text-rose-400" : "text-foreground"
+                }`}
               >
-                {workerStats.total} workers
-              </Badge>
+                {workerStats.blocked}
+              </div>
             </div>
           </div>
+        </section>
 
-          <div className="flex flex-wrap gap-2">
-            <Button size="xs" variant="outline" onClick={() => setDelegateDialogOpen(true)}>
-              <PlusIcon className="size-3.5" />
-              Delegate worker
-            </Button>
-            <Button
-              size="xs"
-              variant="outline"
-              onClick={() => {
-                setManagerTitleDraft(managerThread.title);
-                setRenameDialogOpen(true);
-              }}
-            >
-              <PencilIcon className="size-3.5" />
-              Rename manager
-            </Button>
-            <Button
-              size="xs"
-              variant="outline"
-              disabled={!managerThread.managerScratchpad?.folderPath}
-              onClick={() =>
-                openPath(managerThread.managerScratchpad?.folderPath, "Manager folder")
-              }
-            >
-              <FolderOpenIcon className="size-3.5" />
-              Open folder
-            </Button>
-            <Button
-              size="xs"
-              variant="outline"
+        {/* Sacred Memory */}
+        <section className="space-y-3">
+          <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/80">
+            Sacred Memory
+          </h3>
+          <div className="space-y-2">
+            <button
+              type="button"
               disabled={!managerThread.managerScratchpad?.sessionLogPath}
-              onClick={() =>
-                openPath(managerThread.managerScratchpad?.sessionLogPath, "Manager log")
-              }
+              onClick={() => openPath(managerThread.managerScratchpad?.sessionLogPath, "Manager log")}
+              className="group flex w-full items-center justify-between rounded-lg border border-border/40 bg-white/[0.02] p-2.5 transition-all hover:border-primary/30 hover:bg-white/[0.05]"
             >
-              <FileTextIcon className="size-3.5" />
-              Open log
-            </Button>
+              <div className="flex items-center gap-3">
+                <div className="flex size-8 items-center justify-center rounded border border-primary/20 bg-primary/5 text-primary">
+                  <FileTextIcon className="size-3.5" />
+                </div>
+                <div className="min-w-0 text-left">
+                  <div className="truncate text-xs font-medium text-foreground">session-log.md</div>
+                  <div className="text-[9px] uppercase tracking-widest text-muted-foreground/60">
+                    Durable Audit
+                  </div>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+                OPEN
+              </span>
+            </button>
+            <button
+              type="button"
+              disabled={!managerThread.managerScratchpad?.folderPath}
+              onClick={() => openPath(managerThread.managerScratchpad?.folderPath, "Manager folder")}
+              className="group flex w-full items-center justify-between rounded-lg border border-border/40 bg-white/[0.02] p-2.5 transition-all hover:border-primary/30 hover:bg-white/[0.05]"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex size-8 items-center justify-center rounded border border-primary/20 bg-primary/5 text-primary">
+                  <FolderOpenIcon className="size-3.5" />
+                </div>
+                <div className="min-w-0 text-left">
+                  <div className="truncate text-xs font-medium text-foreground">scratchpad/</div>
+                  <div className="text-[9px] uppercase tracking-widest text-muted-foreground/60">
+                    Shared Memory
+                  </div>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+                OPEN
+              </span>
+            </button>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-4 px-4 py-4">
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div className="rounded-xl border border-border/70 bg-muted/14 p-3">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-                Swarm Snapshot
-              </div>
-              <div className="mt-2 grid grid-cols-2 gap-2 font-mono text-xs">
-                <div className="rounded-lg border border-border/60 px-2 py-2">
-                  <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                    Running
-                  </div>
-                  <div className="mt-1 text-foreground">{workerStats.running}</div>
-                </div>
-                <div className="rounded-lg border border-border/60 px-2 py-2">
-                  <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                    Blocked
-                  </div>
-                  <div className="mt-1 text-foreground">{workerStats.blocked}</div>
-                </div>
-                <div className="rounded-lg border border-border/60 px-2 py-2">
-                  <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                    Completed
-                  </div>
-                  <div className="mt-1 text-foreground">{workerStats.completed}</div>
-                </div>
-                <div className="rounded-lg border border-border/60 px-2 py-2">
-                  <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                    Total
-                  </div>
-                  <div className="mt-1 text-foreground">{workerStats.total}</div>
-                </div>
-              </div>
-            </div>
+        </section>
 
-            <div className="rounded-xl border border-border/70 bg-muted/14 p-3">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-                Sacred Memory
-              </div>
-              <div className="mt-2 space-y-2 font-mono text-[11px] leading-5 text-foreground/88">
-                <div>
-                  <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                    Folder
-                  </div>
-                  <div className="break-all">
-                    {managerThread.managerScratchpad?.folderPath ?? "Not available yet"}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                    Session log
-                  </div>
-                  <div className="break-all">
-                    {managerThread.managerScratchpad?.sessionLogPath ?? "Not available yet"}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-                Workers
-              </div>
-              <div className="font-mono text-[11px] text-muted-foreground">
-                What is happening should stay legible at a glance.
-              </div>
-            </div>
+        {/* Workers */}
+        <section className="space-y-3">
+          <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/80">
+            Delegated Workers
+          </h3>
+          <div className="space-y-1.5">
             {workerThreads.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border/70 bg-muted/12 px-3 py-3 font-mono text-xs text-muted-foreground">
-                No workers yet. Delegate from here when you want the manager to assign execution.
+              <div className="rounded border border-dashed border-border/40 bg-white/[0.01] px-3 py-3 text-center text-[11px] text-muted-foreground/60">
+                No active workers.
               </div>
             ) : (
-              <div className="space-y-2">
-                {workerThreads.map((thread) => (
+              workerThreads.map((thread) => {
+                const isBlocked =
+                  thread.activities.some((activity) => activity.kind === "approval.requested") ||
+                  thread.activities.some((activity) => activity.kind === "user-input.requested");
+                const isRunning =
+                  thread.session?.status === "running" ||
+                  (thread.latestTurn !== null && thread.latestTurn.completedAt === null);
+
+                return (
                   <button
                     key={thread.id}
                     type="button"
-                    className="flex w-full flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/10 px-3 py-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/18"
                     onClick={() => onOpenThread(thread.id)}
+                    className={`flex w-full items-center justify-between rounded border p-2.5 transition-all hover:bg-white/[0.04] ${
+                      isBlocked
+                        ? "border-rose-500/20 bg-rose-500/[0.03] hover:border-rose-500/40"
+                        : "border-border/40 bg-white/[0.01]"
+                    }`}
                   >
-                    <div className="min-w-0 space-y-1">
-                      <div className="font-mono text-sm text-foreground">{thread.title}</div>
-                      <div className="font-mono text-[11px] text-muted-foreground">
-                        {statusLabelForThread(thread)} · updated{" "}
-                        {formatRelativeTimeLabel(thread.updatedAt ?? thread.createdAt)}
-                      </div>
+                    <div className="flex items-center gap-2.5 truncate">
+                      <span
+                        className={`size-1.5 flex-shrink-0 rounded-full ${
+                          isBlocked
+                            ? "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]"
+                            : isRunning
+                              ? "animate-pulse bg-primary shadow-[0_0_8px_rgba(251,113,133,0.6)]"
+                              : "bg-muted-foreground/40"
+                        }`}
+                      />
+                      <span
+                        className={`truncate text-xs font-medium ${
+                          isBlocked ? "text-rose-200" : "text-foreground/90"
+                        }`}
+                      >
+                        {thread.title}
+                      </span>
                     </div>
-                    <Badge
-                      variant="outline"
-                      className="border-border/70 bg-transparent font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground"
+                    <span
+                      className={`font-mono text-[9px] uppercase tracking-tighter ${
+                        isBlocked ? "font-bold text-rose-400" : "text-muted-foreground/60"
+                      }`}
                     >
-                      Open
-                    </Badge>
+                      {statusLabelForThread(thread)}
+                    </span>
                   </button>
-                ))}
-              </div>
+                );
+              })
             )}
           </div>
+        </section>
 
-          <Separator />
+        <button
+          type="button"
+          onClick={() => setDelegateDialogOpen(true)}
+          className="group flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 py-2.5 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60 transition-all hover:border-primary/50 hover:bg-primary/5 hover:text-primary"
+        >
+          <PlusIcon className="size-3.5" />
+          Delegate Worker
+        </button>
+      </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-              <ActivityIcon className="size-3.5" />
-              Recent manager activity
-            </div>
-            {managerActivities.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border/70 bg-muted/12 px-3 py-3 font-mono text-xs text-muted-foreground">
-                The manager activity stream will populate as workers launch, complete, or get
-                blocked.
-              </div>
-            ) : (
-              managerActivities.map((activity) => (
-                <div
-                  key={activity.id}
-                  className="rounded-xl border border-border/70 bg-muted/10 px-3 py-2.5 font-mono text-xs text-foreground/88"
-                >
-                  <div>{activity.summary}</div>
-                  <div className="mt-1 text-[11px] text-muted-foreground">
-                    {formatRelativeTimeLabel(activity.createdAt)}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      <div className="mt-auto border-t border-border/40 p-2 pt-4">
+        <div className="flex gap-2">
+          <Button
+            size="xs"
+            variant="outline"
+            className="flex-1 bg-white/[0.02] font-mono text-[9px] font-bold uppercase tracking-widest text-muted-foreground/80 hover:bg-white/[0.06] hover:text-foreground"
+            onClick={() => setRenameDialogOpen(true)}
+          >
+            <PencilIcon className="size-3 mt-[-1px]" />
+            Rename
+          </Button>
+          <Button
+            size="xs"
+            variant="outline"
+            className="flex-1 bg-white/[0.02] font-mono text-[9px] font-bold uppercase tracking-widest text-muted-foreground/80 hover:bg-white/[0.06] hover:text-foreground"
+          >
+            <ActivityIcon className="size-3 mt-[-1px]" />
+            Reconcile
+          </Button>
+        </div>
+      </div>
 
       <Dialog open={delegateDialogOpen} onOpenChange={setDelegateDialogOpen}>
-        <DialogPopup className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Delegate worker</DialogTitle>
-            <DialogDescription>
-              Launch a bounded worker without leaving the manager thread.
-            </DialogDescription>
+        <DialogPopup className="max-w-xl border-border/60 bg-card/95 backdrop-blur-xl">
+          <DialogHeader className="border-b border-border/40 pb-4">
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-8 items-center justify-center rounded border border-primary/20 bg-primary/10 text-primary">
+                <PlusIcon className="size-4" />
+              </div>
+              <div>
+                <DialogTitle className="font-display text-lg font-medium">Delegate Worker</DialogTitle>
+                <DialogDescription className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground/70">
+                  Launch bounded execution
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
           <form onSubmit={launchDelegatedWorker}>
-            <DialogPanel className="space-y-4">
-              <Field>
-                <FieldLabel>Worker title</FieldLabel>
+            <DialogPanel className="space-y-6 py-6 font-mono">
+              <Field className="space-y-2">
+                <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  Worker Identity
+                </FieldLabel>
                 <Input
                   value={workerTitle}
                   onChange={(event) => setWorkerTitle(event.target.value)}
-                  placeholder="Reconnect patch"
+                  placeholder="e.g., auth-reconnect-fix"
+                  className="border-border/40 bg-white/[0.02] font-mono text-sm focus:border-primary/40 focus:ring-primary/10"
                 />
-                <FieldDescription>
-                  Keep it short and operational so the worker list stays readable.
+                <FieldDescription className="text-[10px] text-muted-foreground/50">
+                  Short, operational slug for the swarm list.
                 </FieldDescription>
               </Field>
-              <Field>
-                <FieldLabel>Assignment</FieldLabel>
+              <Field className="space-y-2">
+                <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  Mission Assignment
+                </FieldLabel>
                 <Textarea
                   value={workerPrompt}
                   onChange={(event) => setWorkerPrompt(event.target.value)}
-                  placeholder="Implement the reconnect fix, run the relevant verification steps, and report the outcome."
+                  placeholder="Implement the fix, run verification, and reconcile outcome..."
+                  className="min-h-[120px] border-border/40 bg-white/[0.02] font-mono text-sm leading-relaxed focus:border-primary/40 focus:ring-primary/10"
                 />
-                <FieldDescription>
-                  Be concrete about scope, expected output, and verification.
+                <FieldDescription className="text-[10px] text-muted-foreground/50">
+                  Define scope, expected output, and verification steps.
                 </FieldDescription>
               </Field>
             </DialogPanel>
-            <DialogFooter>
+            <DialogFooter className="border-t border-border/40 pt-4">
               <Button
                 type="button"
                 variant="outline"
+                className="bg-transparent font-mono text-[10px] font-bold uppercase tracking-widest"
                 onClick={() => setDelegateDialogOpen(false)}
                 disabled={isLaunchingWorker}
               >
-                Cancel
+                Abort
               </Button>
-              <Button type="submit" disabled={isLaunchingWorker}>
-                {isLaunchingWorker ? "Launching..." : "Launch worker"}
+              <Button
+                type="submit"
+                disabled={isLaunchingWorker}
+                className="bg-primary px-6 font-mono text-[10px] font-bold uppercase tracking-widest text-background shadow-[0_0_15px_rgba(251,113,133,0.3)] hover:bg-primary/90"
+              >
+                {isLaunchingWorker ? "Launching Swarm..." : "Execute Mission"}
               </Button>
             </DialogFooter>
           </form>
@@ -523,38 +516,54 @@ export function ManagerConsolePane({
       </Dialog>
 
       <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
-        <DialogPopup className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Rename manager</DialogTitle>
-            <DialogDescription>
-              Give this project manager a durable, human-readable identity.
-            </DialogDescription>
+        <DialogPopup className="max-w-lg border-border/60 bg-card/95 backdrop-blur-xl">
+          <DialogHeader className="border-b border-border/40 pb-4">
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-8 items-center justify-center rounded border border-primary/20 bg-primary/10 text-primary">
+                <PencilIcon className="size-4" />
+              </div>
+              <div>
+                <DialogTitle className="font-display text-lg font-medium">Identify Coordinator</DialogTitle>
+                <DialogDescription className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground/70">
+                  Rename manager entity
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
-          <DialogPanel className="space-y-4">
-            <Field>
-              <FieldLabel>Manager name</FieldLabel>
+          <DialogPanel className="py-6 font-mono">
+            <Field className="space-y-2">
+              <FieldLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                Durable Name
+              </FieldLabel>
               <Input
                 value={managerTitleDraft}
                 onChange={(event) => setManagerTitleDraft(event.target.value)}
-                placeholder="Frontend coordinator"
+                placeholder="e.g., Frontend Lead"
+                className="border-border/40 bg-white/[0.02] font-mono text-sm focus:border-primary/40"
               />
             </Field>
           </DialogPanel>
-          <DialogFooter>
+          <DialogFooter className="border-t border-border/40 pt-4">
             <Button
               type="button"
               variant="outline"
+              className="bg-transparent font-mono text-[10px] font-bold uppercase tracking-widest"
               onClick={() => setRenameDialogOpen(false)}
               disabled={isSavingTitle}
             >
               Cancel
             </Button>
-            <Button type="button" onClick={() => void saveManagerTitle()} disabled={isSavingTitle}>
-              {isSavingTitle ? "Saving..." : "Save name"}
+            <Button
+              type="button"
+              onClick={() => void saveManagerTitle()}
+              disabled={isSavingTitle}
+              className="bg-primary px-6 font-mono text-[10px] font-bold uppercase tracking-widest text-background shadow-[0_0_15px_rgba(251,113,133,0.3)]"
+            >
+              {isSavingTitle ? "Updating..." : "Commit Name"}
             </Button>
           </DialogFooter>
         </DialogPopup>
       </Dialog>
-    </>
+    </div>
   );
 }

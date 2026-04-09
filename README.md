@@ -14,7 +14,7 @@ Q9 Code is a minimal web GUI for coding agents (currently Codex and Claude, more
 ### Run without installing
 
 ```bash
-npx t3
+npx q9
 ```
 
 ### Desktop app
@@ -24,19 +24,19 @@ Install the latest version of the desktop app from [GitHub Releases](https://git
 #### Windows (`winget`)
 
 ```bash
-winget install T3Tools.T3Code
+winget install Q9Tools.Q9Code
 ```
 
 #### macOS (Homebrew)
 
 ```bash
-brew install --cask t3-code
+brew install --cask q9-code
 ```
 
 #### Arch Linux (AUR)
 
 ```bash
-yay -S t3code-bin
+yay -S q9code-bin
 ```
 
 ## Some notes

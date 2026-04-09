@@ -121,7 +121,7 @@ function isoAt(offsetSeconds: number): string {
 function createBaseServerConfig(): ServerConfig {
   return {
     cwd: "/repo/project",
-    keybindingsConfigPath: "/repo/project/.t3code-keybindings.json",
+    keybindingsConfigPath: "/repo/project/.q9code-keybindings.json",
     keybindings: [],
     issues: [],
     providers: [

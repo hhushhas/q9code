@@ -15,7 +15,7 @@ type ThemeSnapshot = {
   systemDark: boolean;
 };
 
-const STORAGE_KEY = "t3code:theme";
+const STORAGE_KEY = "q9code:theme";
 const MEDIA_QUERY = "(prefers-color-scheme: dark)";
 
 let listeners: Array<() => void> = [];

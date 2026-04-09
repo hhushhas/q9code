@@ -67,7 +67,7 @@ const makeCodexTextGeneration = Effect.gen(function* () {
   ): Effect.Effect<string, TextGenerationError, Scope.Scope> => {
     return fileSystem
       .makeTempFileScoped({
-        prefix: `t3code-${prefix}-${process.pid}-${randomUUID()}.tmp`,
+        prefix: `q9code-${prefix}-${process.pid}-${randomUUID()}.tmp`,
       })
       .pipe(
         Effect.tap((filePath) => fileSystem.writeFileString(filePath, content)),

@@ -73,44 +73,51 @@ export function ManagerThreadPanel({
   }
 
   return (
-    <Card className="mx-auto mb-4 w-full max-w-[52rem] border-border/80 bg-card/90 shadow-none">
-      <CardHeader className="gap-2 border-b border-border/70 px-4 py-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-              Managed Thread
-            </div>
-            <CardTitle className="mt-1 flex items-center gap-2 font-mono text-base font-medium">
-              <BotIcon className="size-4 text-primary" />
-              {managerThread.title}
-            </CardTitle>
-            <CardDescription className="mt-1 max-w-2xl font-mono text-xs text-muted-foreground">
-              This worker reports into the project manager and inherits its sacred folder and log.
-            </CardDescription>
+    <div className="mx-auto mb-6 w-full max-w-[52rem] rounded-xl border border-border/60 bg-white/[0.01] p-4 font-mono transition-colors hover:border-primary/30">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/40 pb-3 mb-3">
+        <div className="flex items-center gap-3">
+          <div className="flex size-8 items-center justify-center rounded border border-primary/20 bg-primary/5 text-primary shadow-[0_0_8px_rgba(251,113,133,0.1)]">
+            <BotIcon className="size-4" />
           </div>
+          <div>
+            <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60">
+              Coordinated by
+            </div>
+            <div className="font-display text-sm font-medium text-foreground">
+              {managerThread.title}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
           <Badge
             variant="outline"
-            className="border-border/70 bg-transparent font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground"
+            className="border-border/60 bg-transparent font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground/80"
           >
-            {workerThreads.length} workers
+            {workerThreads.length} Swarm Workers
           </Badge>
         </div>
-      </CardHeader>
-      <CardContent className="flex flex-wrap items-center gap-2 px-4 py-4">
-        <Button size="xs" variant="outline" onClick={() => onOpenThread(managerThread.id)}>
-          <ArrowUpRightIcon className="size-3.5" />
-          Open manager
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="xs"
+          variant="outline"
+          className="bg-white/[0.02] font-mono text-[10px] font-bold uppercase tracking-widest hover:bg-white/[0.06]"
+          onClick={() => onOpenThread(managerThread.id)}
+        >
+          <ArrowUpRightIcon className="size-3 mt-[-1px]" />
+          Return to Manager
         </Button>
         <Button
           size="xs"
           variant="outline"
+          className="bg-white/[0.02] font-mono text-[10px] font-bold uppercase tracking-widest hover:bg-white/[0.06]"
           disabled={!managerThread.managerScratchpad?.folderPath}
           onClick={() => openPath(managerThread.managerScratchpad?.folderPath, "Manager folder")}
         >
-          <FolderOpenIcon className="size-3.5" />
-          Open folder
+          <FolderOpenIcon className="size-3 mt-[-1px]" />
+          Shared Scratchpad
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

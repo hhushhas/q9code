@@ -213,7 +213,7 @@ const createManager = (
 > =>
   Effect.flatMap(Effect.service(FileSystem.FileSystem), (fs) =>
     Effect.gen(function* () {
-      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3code-terminal-" });
+      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "q9code-terminal-" });
       const logsDir = path.join(baseDir, "userdata", "logs", "terminals");
       const ptyAdapter = options.ptyAdapter ?? new FakePtyAdapter();
 

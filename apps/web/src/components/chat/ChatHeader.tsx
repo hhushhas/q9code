@@ -19,6 +19,7 @@ interface ChatHeaderProps {
   activeThreadTitle: string;
   activeThreadRoleBadge?: string | null;
   activeProjectName: string | undefined;
+  managerThreadTitle?: string | null | undefined;
   isGitRepo: boolean;
   openInCwd: string | null;
   activeProjectScripts: ProjectScript[] | undefined;
@@ -44,6 +45,7 @@ export const ChatHeader = memo(function ChatHeader({
   activeThreadTitle,
   activeThreadRoleBadge,
   activeProjectName,
+  managerThreadTitle,
   isGitRepo,
   openInCwd,
   activeProjectScripts,
@@ -67,24 +69,51 @@ export const ChatHeader = memo(function ChatHeader({
     <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2">
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden sm:gap-3">
         <SidebarTrigger className="size-7 shrink-0 md:hidden" />
-        <h2
-          className="min-w-0 shrink truncate text-sm font-medium text-foreground"
-          title={activeThreadTitle}
-        >
-          {activeThreadTitle}
-        </h2>
-        {activeThreadRoleBadge && (
-          <Badge
-            variant="outline"
-            className="shrink-0 font-mono text-[10px] uppercase tracking-[0.14em]"
+        {activeProjectName ? (
+          <div className="flex min-w-0 items-center gap-2 truncate">
+            <h2
+              className="min-w-0 truncate font-display text-base font-medium text-foreground"
+              title={activeProjectName}
+            >
+              {activeProjectName}
+            </h2>
+            {activeThreadRoleBadge === "Manager" ? (
+              <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5">
+                <span className="size-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(251,113,133,0.6)]" />
+                <span className="font-mono text-[9px] font-bold uppercase tracking-widest text-primary">
+                  Manager Console
+                </span>
+              </div>
+            ) : activeThreadRoleBadge === "Worker" ? (
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="text-muted-foreground/40">/</span>
+                <span className="truncate font-mono text-[10px] font-medium text-muted-foreground/60 uppercase tracking-widest">
+                  {managerThreadTitle ?? "Manager"}
+                </span>
+                <span className="text-primary font-bold">→</span>
+                <Badge
+                  variant="outline"
+                  className="shrink-0 truncate border-primary/30 font-mono text-[10px] font-bold uppercase tracking-widest text-primary"
+                >
+                  {activeThreadTitle}
+                </Badge>
+              </div>
+            ) : (
+              <Badge
+                variant="outline"
+                className="shrink-0 truncate font-mono text-[10px] uppercase tracking-widest text-muted-foreground/80"
+              >
+                {activeThreadTitle}
+              </Badge>
+            )}
+          </div>
+        ) : (
+          <h2
+            className="min-w-0 shrink truncate text-sm font-medium text-foreground"
+            title={activeThreadTitle}
           >
-            {activeThreadRoleBadge}
-          </Badge>
-        )}
-        {activeProjectName && (
-          <Badge variant="outline" className="min-w-0 shrink overflow-hidden">
-            <span className="min-w-0 truncate">{activeProjectName}</span>
-          </Badge>
+            {activeThreadTitle}
+          </h2>
         )}
         {activeProjectName && !isGitRepo && (
           <Badge variant="outline" className="shrink-0 text-[10px] text-amber-700">

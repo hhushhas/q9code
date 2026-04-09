@@ -316,7 +316,7 @@ function SidebarThreadRow(props: SidebarThreadRowProps) {
 
   return (
     <SidebarMenuSubItem
-      className="w-full"
+      className={`w-full ${thread.role === "worker" ? "pl-2 border-l border-border/20 ml-1.5" : ""}`}
       data-thread-item
       onMouseLeave={() => {
         props.setConfirmingArchiveThreadId((current) => (current === thread.id ? null : current));
@@ -1468,28 +1468,34 @@ export default function Sidebar() {
               lastVisitedAt: threadLastVisitedAtById[thread.id],
             },
           });
-        const projectThreads = sortThreadsForSidebar(
-          (threadIdsByProjectId[project.id] ?? [])
-            .map((threadId) => sidebarThreadsById[threadId])
-            .filter((thread): thread is NonNullable<typeof thread> => thread !== undefined)
-            .filter((thread) => thread.archivedAt === null),
-          appSettings.sidebarThreadSortOrder,
+        const projectThreads = (threadIdsByProjectId[project.id] ?? [])
+          .map((threadId) => sidebarThreadsById[threadId])
+          .filter((thread): thread is NonNullable<typeof thread> => thread !== undefined)
+          .filter((thread) => thread.archivedAt === null);
+
+        const managerThread = projectThreads.find((thread) => thread.role === "manager");
+        const workerThreads = projectThreads.filter(
+          (thread) => thread.role === "worker" && thread.managerThreadId === managerThread?.id,
         );
-        const managerThreadId =
-          (threadIdsByProjectId[project.id] ?? [])
-            .map((threadId) => sidebarThreadsById[threadId])
-            .find(
-              (thread): thread is NonNullable<typeof thread> =>
-                thread !== undefined && thread.role === "manager",
-            )?.id ?? null;
+        const independentThreads = projectThreads.filter(
+          (thread) => thread.id !== managerThread?.id && !workerThreads.includes(thread),
+        );
+
+        const orderedThreads = [
+          ...(managerThread ? [managerThread] : []),
+          ...sortThreadsForSidebar(workerThreads, appSettings.sidebarThreadSortOrder),
+          ...sortThreadsForSidebar(independentThreads, appSettings.sidebarThreadSortOrder),
+        ];
+
+        const managerThreadId = managerThread?.id ?? null;
         const projectStatus = resolveProjectStatusIndicator(
-          projectThreads.map((thread) => resolveProjectThreadStatus(thread)),
+          orderedThreads.map((thread) => resolveProjectThreadStatus(thread)),
         );
         const activeThreadId = routeThreadId ?? undefined;
         const isThreadListExpanded = expandedThreadListsByProject.has(project.id);
         const pinnedCollapsedThread =
           !project.expanded && activeThreadId
-            ? (projectThreads.find((thread) => thread.id === activeThreadId) ?? null)
+            ? (orderedThreads.find((thread) => thread.id === activeThreadId) ?? null)
             : null;
         const shouldShowThreadPanel = project.expanded || pinnedCollapsedThread !== null;
         const {
@@ -1497,7 +1503,7 @@ export default function Sidebar() {
           hiddenThreads,
           visibleThreads: visibleProjectThreads,
         } = getVisibleThreadsForProject({
-          threads: projectThreads,
+          threads: orderedThreads,
           activeThreadId,
           isThreadListExpanded,
           previewLimit: THREAD_PREVIEW_LIMIT,
@@ -1505,7 +1511,7 @@ export default function Sidebar() {
         const hiddenThreadStatus = resolveProjectStatusIndicator(
           hiddenThreads.map((thread) => resolveProjectThreadStatus(thread)),
         );
-        const orderedProjectThreadIds = projectThreads.map((thread) => thread.id);
+        const orderedProjectThreadIds = orderedThreads.map((thread) => thread.id);
         const renderedThreadIds = pinnedCollapsedThread
           ? [pinnedCollapsedThread.id]
           : visibleProjectThreads.map((thread) => thread.id);

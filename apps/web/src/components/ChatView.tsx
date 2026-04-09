@@ -681,6 +681,34 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [isDragOverComposer, setIsDragOverComposer] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
+  const [consoleCollapsed, setConsoleCollapsed] = useState(false);
+  const [consoleWidth, setConsoleWidth] = useState(384); // 24rem
+  const [isResizingConsole, setIsResizingConsole] = useState(false);
+
+  const startResizingConsole = useCallback(() => {
+    setIsResizingConsole(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isResizingConsole) return;
+
+    const onMouseMove = (e: MouseEvent) => {
+      const newWidth = Math.min(Math.max(280, e.clientX - 64), 600);
+      setConsoleWidth(newWidth);
+    };
+
+    const onMouseUp = () => {
+      setIsResizingConsole(false);
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [isResizingConsole]);
+
   const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([]);
   const optimisticUserMessagesRef = useRef(optimisticUserMessages);
   optimisticUserMessagesRef.current = optimisticUserMessages;
@@ -4033,6 +4061,48 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }
     return false;
   };
+  const managerThread = useMemo(() => {
+    if (!activeThread?.managerThreadId) return null;
+    return projectThreads.find((t) => t.id === activeThread.managerThreadId);
+  }, [activeThread?.managerThreadId, projectThreads]);
+
+  const onSendOutcomeToManager = useCallback(async () => {
+    const api = readNativeApi();
+    if (!api || !activeThread || !activeThread.managerThreadId) return;
+
+    try {
+      // In a real implementation, this would trigger a specific RPC to the manager.
+      // For the UI prototype, we'll append a mission completion message.
+      await api.orchestration.dispatchCommand({
+        type: "thread.turn.start",
+        commandId: newCommandId(),
+        threadId: activeThread.id,
+        message: {
+          messageId: newMessageId(),
+          role: "user",
+          text: "Mission complete. Please reconcile all outcomes and notify the Manager that I am ready for final review.",
+          attachments: [],
+        },
+        modelSelection: activeThread.modelSelection,
+        runtimeMode: activeThread.runtimeMode,
+        interactionMode: activeThread.interactionMode,
+        createdAt: new Date().toISOString(),
+      });
+
+      toastManager.add({
+        type: "success",
+        title: "Mission Outcome Logged",
+        description: "Reconciling results with the Coordinator.",
+      });
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "Sync failed",
+        description: error instanceof Error ? error.message : "Unexpected error during outcome sync.",
+      });
+    }
+  }, [activeThread]);
+
   const onToggleWorkGroup = useCallback((groupId: string) => {
     setExpandedWorkGroups((existing) => ({
       ...existing,
@@ -4108,6 +4178,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
             isManagerThread ? "Manager" : activeThread.managerThreadId ? "Worker" : null
           }
           activeProjectName={activeProject?.name}
+          managerThreadTitle={managerThread?.title}
           isGitRepo={isGitRepo}
           openInCwd={gitCwd}
           activeProjectScripts={activeProject?.scripts}
@@ -4140,10 +4211,16 @@ export default function ChatView({ threadId }: ChatViewProps) {
         onDismiss={() => setThreadError(activeThread.id, null)}
       />
       {/* Main content area with optional plan sidebar */}
-      <div className="flex min-h-0 min-w-0 flex-1">
-        {isManagerThread && activeProject ? (
-          <aside className="hidden min-h-0 w-[24rem] shrink-0 border-r border-border/70 bg-background/70 p-3 lg:block">
-            <div className="h-full overflow-y-auto pr-1">
+      <div className="flex min-h-0 min-w-0 flex-1 relative overflow-hidden">
+        {isManagerThread && activeProject && (
+          <aside
+            className={cn(
+              "hidden min-h-0 shrink-0 border-r border-border/70 bg-background/50 transition-[width,margin] duration-300 ease-in-out lg:block overflow-visible relative",
+              consoleCollapsed ? "w-0 border-r-0" : ""
+            )}
+            style={{ width: consoleCollapsed ? 0 : consoleWidth }}
+          >
+            <div className={cn("h-full overflow-y-auto p-4 transition-opacity duration-200", consoleCollapsed ? "opacity-0 pointer-events-none" : "opacity-100")}>
               <ManagerConsolePane
                 managerThread={activeThread}
                 activeProject={activeProject}
@@ -4156,8 +4233,29 @@ export default function ChatView({ threadId }: ChatViewProps) {
                 }}
               />
             </div>
+            {/* Resizer */}
+            {!consoleCollapsed && (
+              <div
+                onMouseDown={startResizingConsole}
+                className={cn(
+                  "absolute top-0 right-0 w-1 h-full cursor-col-resize z-50 transition-colors hover:bg-primary/40",
+                  isResizingConsole ? "bg-primary/60" : ""
+                )}
+              />
+            )}
+            
+            {/* Toggle Button */}
+            <button
+              onClick={() => setConsoleCollapsed(!consoleCollapsed)}
+              className={cn(
+                "absolute top-1/2 -translate-y-1/2 translate-x-1.5 size-6 rounded-full border border-border bg-card/80 backdrop-blur-md flex items-center justify-center text-muted-foreground hover:text-primary transition-all z-[60] shadow-sm",
+                consoleCollapsed ? "left-0 rotate-180" : "right-0"
+              )}
+            >
+              <ChevronLeftIcon className="size-3.5" />
+            </button>
           </aside>
-        ) : null}
+        )}
 
         {/* Chat column */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -4193,17 +4291,19 @@ export default function ChatView({ threadId }: ChatViewProps) {
               onTouchEnd={onMessagesTouchEnd}
               onTouchCancel={onMessagesTouchEnd}
             >
-              <ManagerThreadPanel
-                activeThread={activeThread}
-                activeProject={activeProject}
-                projectThreads={projectThreads}
-                onOpenThread={(nextThreadId) => {
-                  void navigate({
-                    to: "/$threadId",
-                    params: { threadId: nextThreadId },
-                  });
-                }}
-              />
+              {!isManagerThread && (
+                <ManagerThreadPanel
+                  activeThread={activeThread}
+                  activeProject={activeProject}
+                  projectThreads={projectThreads}
+                  onOpenThread={(nextThreadId) => {
+                    void navigate({
+                      to: "/$threadId",
+                      params: { threadId: nextThreadId },
+                    });
+                  }}
+                />
+              )}
               <MessagesTimeline
                 key={activeThread.id}
                 hasMessages={timelineEntries.length > 0}
@@ -4598,9 +4698,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
                         ) : null}
                         <ComposerPrimaryActions
                           compact={isComposerPrimaryActionsCompact}
+                          isWorkerThread={Boolean(activeThread.managerThreadId)}
+                          onSendOutcomeToManager={onSendOutcomeToManager}
                           pendingAction={
                             activePendingProgress
                               ? {
+
                                   questionIndex: activePendingProgress.questionIndex,
                                   isLastQuestion: activePendingProgress.isLastQuestion,
                                   canAdvance: activePendingProgress.canAdvance,
