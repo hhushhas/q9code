@@ -36,6 +36,29 @@
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
+
+  /* Typography Scale */
+  --font-size-2xs: var(--text-2xs);
+  --font-size-xs: var(--text-xs);
+  --font-size-sm: var(--text-sm);
+  --font-size-base: var(--text-base);
+  --font-size-lg: var(--text-lg);
+  --font-size-xl: var(--text-xl);
+  --font-size-2xl: var(--text-2xl);
+
+  /* Letter Spacing */
+  --tracking-tight: var(--tracking-tight);
+  --tracking-normal: var(--tracking-normal);
+  --tracking-wide: var(--tracking-wide);
+  --tracking-wider: var(--tracking-wider);
+  --tracking-widest: var(--tracking-widest);
+  --tracking-ultra: var(--tracking-ultra);
+
+  /* Spacing */
+  --spacing-0-5: var(--space-0-5);
+  --spacing-1-5: var(--space-1-5);
+  --spacing-2-5: var(--space-2-5);
+
   @keyframes skeleton {
     to {
       background-position: -200% 0;
@@ -236,6 +259,43 @@
     --warning: var(--color-amber-500);
     --warning-foreground: var(--color-amber-400);
   }
+
+  /* Design System Tokens */
+  /* Typography Scale - 4px base grid */
+  --text-2xs: 0.625rem; /* 10px - Micro labels */
+  --text-xs: 0.75rem; /* 12px - Small labels, timestamps */
+  --text-sm: 0.875rem; /* 14px - Body small */
+  --text-base: 1rem; /* 16px - Body default */
+  --text-lg: 1.125rem; /* 18px - Large body */
+  --text-xl: 1.25rem; /* 20px - Headings small */
+  --text-2xl: 1.5rem; /* 24px - Headings medium */
+
+  /* Spacing Scale - 4px base */
+  --space-0-5: 0.125rem; /* 2px */
+  --space-1: 0.25rem; /* 4px */
+  --space-1-5: 0.375rem; /* 6px */
+  --space-2: 0.5rem; /* 8px */
+  --space-2-5: 0.625rem; /* 10px */
+  --space-3: 0.75rem; /* 12px */
+  --space-4: 1rem; /* 16px */
+  --space-5: 1.25rem; /* 20px */
+  --space-6: 1.5rem; /* 24px */
+  --space-8: 2rem; /* 32px */
+
+  /* Border Radius Scale */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  /* Tracking Scale */
+  --tracking-tight: -0.04em;
+  --tracking-normal: -0.01em;
+  --tracking-wide: 0.08em;
+  --tracking-wider: 0.12em;
+  --tracking-widest: 0.16em;
+  --tracking-ultra: 0.2em;
 }
 
 body {
@@ -281,6 +341,67 @@ optgroup,
 option,
 summary {
   font-family: var(--font-body);
+}
+
+/* Design System Utility Classes */
+
+/* Label typography - for section headers, badges, micro text */
+.label-micro {
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-ultra);
+  line-height: 1;
+}
+
+.label-small {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-widest);
+  line-height: 1;
+}
+
+.label-tiny {
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  line-height: 1;
+}
+
+/* Surface styles for the Hasan theme aesthetic */
+.surface-ghost {
+  background-color: rgb(255 255 255 / 0.02);
+  border-color: rgb(255 255 255 / 0.1);
+}
+
+.surface-ghost-hover:hover {
+  background-color: rgb(255 255 255 / 0.05);
+  border-color: rgb(255 255 255 / 0.2);
+}
+
+/* Status indicators */
+.status-dot {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+.status-dot-active {
+  background-color: var(--primary);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--primary) 60%, transparent);
+}
+
+.status-dot-blocked {
+  background-color: var(--destructive);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--destructive) 60%, transparent);
+}
+
+.status-dot-idle {
+  background-color: var(--muted-foreground);
+  opacity: 0.4;
 }
 
 :root.theme-hasan-signature,

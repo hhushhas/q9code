@@ -128,7 +128,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           size="sm"
           variant="outline"
           onClick={onSendOutcomeToManager}
-          className="h-9 rounded-full border-primary/30 bg-primary/5 px-4 font-mono text-[10px] font-bold uppercase tracking-widest text-primary hover:bg-primary/10 sm:h-8 sm:px-3"
+          className="h-9 rounded-full border-primary/30 bg-primary/5 px-4 font-mono label-tiny text-primary hover:bg-primary/10 sm:h-8 sm:px-3"
         >
           Send outcome
         </Button>

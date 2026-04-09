@@ -79,21 +79,19 @@ export const ChatHeader = memo(function ChatHeader({
             </h2>
             {activeThreadRoleBadge === "Manager" ? (
               <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5">
-                <span className="size-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(251,113,133,0.6)]" />
-                <span className="font-mono text-[9px] font-bold uppercase tracking-widest text-primary">
-                  Manager Console
-                </span>
+                <span className="status-dot status-dot-active" />
+                <span className="font-mono label-tiny text-primary">Manager Console</span>
               </div>
             ) : activeThreadRoleBadge === "Worker" ? (
               <div className="flex min-w-0 items-center gap-1.5">
                 <span className="text-muted-foreground/40">/</span>
-                <span className="truncate font-mono text-[10px] font-medium text-muted-foreground/60 uppercase tracking-widest">
+                <span className="truncate font-mono label-tiny font-medium text-muted-foreground/60">
                   {managerThreadTitle ?? "Manager"}
                 </span>
                 <span className="text-primary font-bold">→</span>
                 <Badge
                   variant="outline"
-                  className="shrink-0 truncate border-primary/30 font-mono text-[10px] font-bold uppercase tracking-widest text-primary"
+                  className="shrink-0 truncate border-primary/30 font-mono label-tiny font-bold text-primary"
                 >
                   {activeThreadTitle}
                 </Badge>
@@ -101,7 +99,7 @@ export const ChatHeader = memo(function ChatHeader({
             ) : (
               <Badge
                 variant="outline"
-                className="shrink-0 truncate font-mono text-[10px] uppercase tracking-widest text-muted-foreground/80"
+                className="shrink-0 truncate font-mono label-tiny text-muted-foreground/80"
               >
                 {activeThreadTitle}
               </Badge>
@@ -116,7 +114,7 @@ export const ChatHeader = memo(function ChatHeader({
           </h2>
         )}
         {activeProjectName && !isGitRepo && (
-          <Badge variant="outline" className="shrink-0 text-[10px] text-amber-700">
+          <Badge variant="outline" className="shrink-0 label-tiny text-amber-700">
             No Git
           </Badge>
         )}

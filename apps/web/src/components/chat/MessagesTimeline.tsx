@@ -330,13 +330,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             <div className="rounded-xl border border-border/45 bg-card/25 px-2 py-1.5">
               {showHeader && (
                 <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
-                  <p className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground/55">
+                  <p className="label-tiny text-muted-foreground/55">
                     {groupLabel} ({groupedEntries.length})
                   </p>
                   {hasOverflow && (
                     <button
                       type="button"
-                      className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground/55 transition-colors duration-150 hover:text-foreground/75"
+                      className="label-tiny text-muted-foreground/55 transition-colors duration-150 hover:text-foreground/75"
                       onClick={() => onToggleWorkGroup(groupId)}
                     >
                       {isExpanded ? "Show less" : `Show ${hiddenCount} more`}
@@ -392,7 +392,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                                 />
                               </button>
                             ) : (
-                              <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
+                              <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-xs text-muted-foreground/70">
                                 {image.name}
                               </div>
                             )}
@@ -429,7 +429,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                       </Button>
                     )}
                   </div>
-                  <p className="text-right font-mono text-[10px] text-muted-foreground/45">
+                  <p className="text-right font-mono label-tiny text-muted-foreground/45">
                     {formatShortTimestamp(row.message.createdAt, timestampFormat)}
                   </p>
                 </div>
@@ -447,7 +447,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               {row.showCompletionDivider && (
                 <div className="my-3 flex items-center gap-3">
                   <span className="h-px flex-1 bg-border" />
-                  <span className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground/80">
+                  <span className="rounded-full border border-border bg-background px-2.5 py-1 label-tiny text-muted-foreground/80">
                     {completionSummary ? `Response • ${completionSummary}` : "Response"}
                   </span>
                   <span className="h-px flex-1 bg-border" />
@@ -471,7 +471,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   return (
                     <div className="mt-2 rounded-lg border border-border/80 bg-card/45 p-2.5">
                       <div className="mb-1.5 flex items-center justify-between gap-2">
-                        <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
+                        <p className="label-tiny text-muted-foreground/65">
                           <span>Changed files ({changedFileCountLabel})</span>
                           {hasNonZeroStat(summaryStat) && (
                             <>
@@ -516,7 +516,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     </div>
                   );
                 })()}
-                <p className="mt-1.5 text-[10px] text-muted-foreground/30">
+                <p className="mt-1.5 label-tiny text-muted-foreground/30">
                   {formatMessageMeta(
                     row.message.createdAt,
                     row.message.streaming
@@ -542,7 +542,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
       {row.kind === "working" && (
         <div className="py-0.5 pl-1.5">
-          <div className="flex items-center gap-2 pt-1 text-[11px] text-muted-foreground/70">
+          <div className="flex items-center gap-2 pt-1 text-xs text-muted-foreground/70">
             <span className="inline-flex items-center gap-[3px]">
               <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse" />
               <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:200ms]" />
