@@ -52,6 +52,10 @@
       "types": "./src/projectScripts.ts",
       "import": "./src/projectScripts.ts"
     },
+    "./changedFiles": {
+      "types": "./src/changedFiles.ts",
+      "import": "./src/changedFiles.ts"
+    },
     "./manager": {
       "types": "./src/manager.ts",
       "import": "./src/manager.ts"

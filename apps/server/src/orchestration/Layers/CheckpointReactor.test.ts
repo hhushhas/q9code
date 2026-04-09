@@ -144,7 +144,7 @@ async function waitForThread(
 
 async function waitForEvent(
   engine: OrchestrationEngineShape,
-  predicate: (event: { type: string }) => boolean,
+  predicate: (event: { type: string; payload?: any }) => boolean,
   timeoutMs = 15_000,
 ) {
   const deadline = Date.now() + timeoutMs;
@@ -693,6 +693,134 @@ describe("CheckpointReactor", () => {
         "README.md",
       ),
     ).toBe("v2\n");
+  });
+
+  it("keeps manager and sibling worker checkpoint files scoped in a shared workspace", async () => {
+    const harness = await createHarness({
+      hasSession: false,
+      seedFilesystemCheckpoints: false,
+      threadWorktreePath: null,
+    });
+    const checkpointStore = await runtime!.runPromise(Effect.service(CheckpointStore));
+    const createdAt = new Date().toISOString();
+    const managerThreadId = ThreadId.makeUnsafe("thread-manager");
+    const workerAThreadId = ThreadId.makeUnsafe("thread-worker-a");
+    const workerBThreadId = ThreadId.makeUnsafe("thread-worker-b");
+
+    for (const thread of [
+      {
+        threadId: managerThreadId,
+        title: "Project manager",
+        role: "manager" as const,
+      },
+      {
+        threadId: workerAThreadId,
+        title: "Worker A",
+        role: "worker" as const,
+        managerThreadId,
+      },
+      {
+        threadId: workerBThreadId,
+        title: "Worker B",
+        role: "worker" as const,
+        managerThreadId,
+      },
+    ]) {
+      await Effect.runPromise(
+        harness.engine.dispatch({
+          type: "thread.create",
+          commandId: CommandId.makeUnsafe(`cmd-create-${thread.threadId}`),
+          threadId: thread.threadId,
+          projectId: asProjectId("project-1"),
+          title: thread.title,
+          modelSelection: {
+            provider: "codex",
+            model: "gpt-5-codex",
+          },
+          role: thread.role,
+          ...("managerThreadId" in thread ? { managerThreadId: thread.managerThreadId } : {}),
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          runtimeMode: "approval-required",
+          branch: null,
+          worktreePath: null,
+          createdAt,
+        }),
+      );
+      await runtime!.runPromise(
+        checkpointStore.captureCheckpoint({
+          cwd: harness.cwd,
+          checkpointRef: checkpointRefForThreadTurn(thread.threadId, 0),
+        }),
+      );
+    }
+
+    fs.writeFileSync(path.join(harness.cwd, "README.md"), "worker-a owns this change\n", "utf8");
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.activity.append",
+        commandId: CommandId.makeUnsafe("cmd-worker-a-file-change"),
+        threadId: workerAThreadId,
+        activity: {
+          id: EventId.makeUnsafe("activity-worker-a-file-change"),
+          tone: "tool",
+          kind: "tool.updated",
+          summary: "File change",
+          payload: {
+            itemType: "file_change",
+            data: {
+              item: {
+                changes: [{ path: "README.md" }],
+              },
+            },
+          },
+          turnId: TurnId.makeUnsafe("turn-worker-a"),
+          createdAt,
+        },
+        createdAt,
+      }),
+    );
+
+    for (const input of [
+      { threadId: workerAThreadId, turnId: TurnId.makeUnsafe("turn-worker-a") },
+      { threadId: managerThreadId, turnId: TurnId.makeUnsafe("turn-manager") },
+      { threadId: workerBThreadId, turnId: TurnId.makeUnsafe("turn-worker-b") },
+    ]) {
+      await Effect.runPromise(
+        harness.engine.dispatch({
+          type: "thread.turn.diff.complete",
+          commandId: CommandId.makeUnsafe(`cmd-turn-diff-${input.threadId}`),
+          threadId: input.threadId,
+          turnId: input.turnId,
+          completedAt: createdAt,
+          checkpointTurnCount: 1,
+          checkpointRef: checkpointRefForThreadTurn(input.threadId, 1),
+          status: "missing",
+          files: [],
+          assistantMessageId: MessageId.makeUnsafe(`assistant-${input.threadId}`),
+          createdAt,
+        }),
+      );
+    }
+
+    await waitForEvent(
+      harness.engine,
+      (event) =>
+        event.type === "thread.turn-diff-completed" &&
+        event.payload?.threadId === workerBThreadId &&
+        event.payload?.status === "ready",
+    );
+
+    const readModel = await Effect.runPromise(harness.engine.getReadModel());
+    const managerThread = readModel.threads.find((thread) => thread.id === managerThreadId);
+    const workerAThread = readModel.threads.find((thread) => thread.id === workerAThreadId);
+    const workerBThread = readModel.threads.find((thread) => thread.id === workerBThreadId);
+
+    expect(workerAThread?.checkpoints.at(-1)?.files.map((file) => file.path)).toEqual([
+      "README.md",
+    ]);
+    expect(managerThread?.checkpoints.at(-1)?.files).toEqual([]);
+    expect(workerBThread?.checkpoints.at(-1)?.files).toEqual([]);
   });
 
   it("ignores non-v2 checkpoint.captured runtime events", async () => {

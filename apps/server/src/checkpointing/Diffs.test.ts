@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { parseTurnDiffFilesFromUnifiedDiff } from "./Diffs.ts";
+import {
+  filterTurnDiffFilesToPaths,
+  filterUnifiedDiffByPaths,
+  parseTurnDiffFilesFromUnifiedDiff,
+} from "./Diffs.ts";
 
 describe("parseTurnDiffFilesFromUnifiedDiff", () => {
   it("returns empty list for empty diff", () => {
@@ -64,5 +68,44 @@ describe("parseTurnDiffFilesFromUnifiedDiff", () => {
     expect(parseTurnDiffFilesFromUnifiedDiff(diff)).toEqual([
       { path: "a.txt", additions: 2, deletions: 1 },
     ]);
+  });
+
+  it("filters parsed file summaries to allowed paths", () => {
+    expect(
+      filterTurnDiffFilesToPaths(
+        [
+          { path: "a.txt", additions: 2, deletions: 1 },
+          { path: "b.txt", additions: 1, deletions: 0 },
+        ],
+        new Set(["b.txt"]),
+      ),
+    ).toEqual([{ path: "b.txt", additions: 1, deletions: 0 }]);
+  });
+
+  it("filters unified diffs to allowed files", () => {
+    const diff = [
+      "diff --git a/a.txt b/a.txt",
+      "index 1111111..2222222 100644",
+      "--- a/a.txt",
+      "+++ b/a.txt",
+      "@@ -1 +1 @@",
+      "-old a",
+      "+new a",
+      "diff --git a/b.txt b/b.txt",
+      "index 3333333..4444444 100644",
+      "--- a/b.txt",
+      "+++ b/b.txt",
+      "@@ -1 +1 @@",
+      "-old b",
+      "+new b",
+      "",
+    ].join("\n");
+
+    expect(filterUnifiedDiffByPaths(diff, new Set(["b.txt"]))).toContain(
+      "diff --git a/b.txt b/b.txt",
+    );
+    expect(filterUnifiedDiffByPaths(diff, new Set(["b.txt"]))).not.toContain(
+      "diff --git a/a.txt b/a.txt",
+    );
   });
 });

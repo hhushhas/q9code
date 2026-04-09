@@ -10,8 +10,12 @@ import {
 } from "@t3tools/contracts";
 import { Cause, Effect, Layer, Option, Stream } from "effect";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
+import { extractChangedFilesFromActivities } from "@t3tools/shared/changedFiles";
 
-import { parseTurnDiffFilesFromUnifiedDiff } from "../../checkpointing/Diffs.ts";
+import {
+  filterTurnDiffFilesToPaths,
+  parseTurnDiffFilesFromUnifiedDiff,
+} from "../../checkpointing/Diffs.ts";
 import {
   checkpointRefForThreadTurn,
   resolveThreadWorkspaceCwd,
@@ -192,6 +196,12 @@ const make = Effect.gen(function* () {
     readonly threadId: ThreadId;
     readonly turnId: TurnId;
     readonly thread: {
+      readonly role?: "default" | "manager" | "worker";
+      readonly managerThreadId?: ThreadId | null;
+      readonly activities: ReadonlyArray<{
+        readonly turnId: TurnId | null;
+        readonly payload?: unknown;
+      }>;
       readonly messages: ReadonlyArray<{
         readonly id: MessageId;
         readonly role: string;
@@ -229,6 +239,12 @@ const make = Effect.gen(function* () {
     // reflects files created or deleted during this turn.
     yield* workspaceEntries.invalidate(input.cwd);
 
+    const isWorkerScopedThread =
+      input.thread.role === "manager" || (input.thread.managerThreadId ?? null) !== null;
+    const scopedChangedPaths = new Set(
+      extractChangedFilesFromActivities(input.thread.activities, input.turnId),
+    );
+
     const files = yield* checkpointStore
       .diffCheckpoints({
         cwd: input.cwd,
@@ -237,14 +253,21 @@ const make = Effect.gen(function* () {
         fallbackFromToHead: false,
       })
       .pipe(
-        Effect.map((diff) =>
-          parseTurnDiffFilesFromUnifiedDiff(diff).map((file) => ({
+        Effect.map((diff) => {
+          const parsedFiles = parseTurnDiffFilesFromUnifiedDiff(diff);
+          const scopedFiles =
+            scopedChangedPaths.size > 0
+              ? filterTurnDiffFilesToPaths(parsedFiles, scopedChangedPaths)
+              : isWorkerScopedThread
+                ? []
+                : parsedFiles;
+          return scopedFiles.map((file) => ({
             path: file.path,
             kind: "modified" as const,
             additions: file.additions,
             deletions: file.deletions,
-          })),
-        ),
+          }));
+        }),
         Effect.tapError((error) =>
           appendCaptureFailureActivity({
             threadId: input.threadId,

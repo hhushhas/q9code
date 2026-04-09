@@ -7,6 +7,7 @@ import {
 import { Effect, Layer, Option, Schema } from "effect";
 
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { filterUnifiedDiffByPaths } from "../Diffs.ts";
 import { CheckpointInvariantError, CheckpointUnavailableError } from "../Errors.ts";
 import { checkpointRefForThreadTurn } from "../Utils.ts";
 import { CheckpointStore } from "../Services/CheckpointStore.ts";
@@ -16,6 +17,13 @@ import {
 } from "../Services/CheckpointDiffQuery.ts";
 
 const isTurnDiffResult = Schema.is(OrchestrationGetTurnDiffResult);
+
+function isWorkerScopedThread(input: {
+  readonly role: "default" | "manager" | "worker";
+  readonly managerThreadId: string | null;
+}) {
+  return input.role === "manager" || input.managerThreadId !== null;
+}
 
 const make = Effect.gen(function* () {
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
@@ -133,11 +141,27 @@ const make = Effect.gen(function* () {
         fallbackFromToHead: false,
       });
 
+      const scopedPaths = new Set(
+        threadContext.value.checkpoints
+          .filter(
+            (checkpoint) =>
+              checkpoint.checkpointTurnCount > input.fromTurnCount &&
+              checkpoint.checkpointTurnCount <= input.toTurnCount,
+          )
+          .flatMap((checkpoint) => checkpoint.files.map((file) => file.path)),
+      );
+      const scopedDiff =
+        scopedPaths.size > 0
+          ? filterUnifiedDiffByPaths(diff, scopedPaths)
+          : isWorkerScopedThread(threadContext.value)
+            ? ""
+            : diff;
+
       const turnDiff: OrchestrationGetTurnDiffResultType = {
         threadId: input.threadId,
         fromTurnCount: input.fromTurnCount,
         toTurnCount: input.toTurnCount,
-        diff,
+        diff: scopedDiff,
       };
       if (!isTurnDiffResult(turnDiff)) {
         return yield* new CheckpointInvariantError({

@@ -25,3 +25,32 @@ export function parseTurnDiffFilesFromUnifiedDiff(
 
   return files.toSorted((left, right) => left.path.localeCompare(right.path));
 }
+
+export function filterTurnDiffFilesToPaths(
+  files: ReadonlyArray<TurnDiffFileSummary>,
+  allowedPaths: ReadonlySet<string>,
+): ReadonlyArray<TurnDiffFileSummary> {
+  if (allowedPaths.size === 0) {
+    return [];
+  }
+  return files.filter((file) => allowedPaths.has(file.path));
+}
+
+export function filterUnifiedDiffByPaths(diff: string, allowedPaths: ReadonlySet<string>): string {
+  if (allowedPaths.size === 0) {
+    return "";
+  }
+
+  const normalized = diff.replace(/\r\n/g, "\n").trim();
+  if (normalized.length === 0) {
+    return "";
+  }
+
+  const segments = normalized.split(/(?=^diff --git )/gm);
+  const filteredSegments = segments.filter((segment) => {
+    const parsedPatches = parsePatchFiles(segment);
+    return parsedPatches.some((patch) => patch.files.some((file) => allowedPaths.has(file.name)));
+  });
+
+  return filteredSegments.join("\n").trim();
+}
