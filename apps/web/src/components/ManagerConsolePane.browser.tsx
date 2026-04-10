@@ -195,6 +195,49 @@ const workerThread: Thread = {
   scheduledMessages: [],
 };
 
+const completedWorkerThread: Thread = {
+  id: ThreadId.makeUnsafe("thread-worker-completed"),
+  codexThreadId: null,
+  projectId: project.id,
+  title: "Release worker",
+  modelSelection: {
+    provider: "claudeAgent",
+    model: "claude-sonnet-4-6",
+  },
+  role: "worker",
+  managerThreadId: managerThread.id,
+  managerScratchpad: null,
+  runtimeMode: "full-access",
+  interactionMode: "default",
+  session: {
+    provider: "claudeAgent",
+    status: "ready",
+    orchestrationStatus: "stopped",
+    createdAt: "2026-04-09T07:50:00.000Z",
+    updatedAt: "2026-04-09T07:59:00.000Z",
+  },
+  messages: [],
+  proposedPlans: [],
+  error: null,
+  createdAt: "2026-04-09T07:50:00.000Z",
+  archivedAt: null,
+  updatedAt: "2026-04-09T07:59:00.000Z",
+  latestTurn: {
+    turnId: "turn-worker-completed" as never,
+    state: "completed",
+    requestedAt: "2026-04-09T07:50:00.000Z",
+    startedAt: "2026-04-09T07:50:02.000Z",
+    completedAt: "2026-04-09T07:59:00.000Z",
+    assistantMessageId: "msg-worker-completed" as never,
+    sourceProposedPlan: undefined,
+  },
+  branch: "main",
+  worktreePath: "/repo/project",
+  turnDiffSummaries: [],
+  activities: [],
+  scheduledMessages: [],
+};
+
 afterEach(() => {
   vi.clearAllMocks();
   document.body.innerHTML = "";
@@ -208,7 +251,7 @@ describe("ManagerConsolePane", () => {
       <ManagerConsolePane
         managerThread={managerThread}
         activeProject={project}
-        projectThreads={[managerThread, workerThread]}
+        projectThreads={[managerThread, workerThread, completedWorkerThread]}
         onOpenThread={vi.fn()}
       />,
       { container: host },
@@ -263,10 +306,13 @@ describe("ManagerConsolePane", () => {
         );
       });
 
-      await page.getByRole("button", { name: "Input" }).click({ force: true });
-      await page.getByRole("button", { name: "Interrupt" }).first().click({ force: true });
+      (
+        document.querySelector(
+          `button[aria-label="Input ${workerThread.title}"]`,
+        ) as HTMLButtonElement | null
+      )?.click();
       await page
-        .getByPlaceholder("Clarify the next step, unblock a decision, or redirect the worker...")
+        .getByPlaceholder("Clarify the next step...")
         .fill("Stop the current turn and retry with websocket tracing enabled.");
       const submitButtons = document.querySelectorAll('button[type="submit"]');
       (submitButtons.item(submitButtons.length - 1) as HTMLButtonElement | null)?.click();
@@ -282,6 +328,49 @@ describe("ManagerConsolePane", () => {
               text: "Stop the current turn and retry with websocket tracing enabled.",
               messageId: expect.any(String),
             }),
+          }),
+        );
+      });
+
+      (
+        document.querySelector(
+          `button[aria-label="Input ${completedWorkerThread.title}"]`,
+        ) as HTMLButtonElement | null
+      )?.click();
+      await page
+        .getByPlaceholder("Clarify the next step...")
+        .fill("Pick up from the completed release pass and summarize the remaining DMG blockers.");
+      const completedSubmitButtons = document.querySelectorAll('button[type="submit"]');
+      (
+        completedSubmitButtons.item(completedSubmitButtons.length - 1) as HTMLButtonElement | null
+      )?.click();
+
+      await vi.waitFor(() => {
+        expect(dispatchCommandSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            type: "manager.worker.input.send",
+            managerThreadId: managerThread.id,
+            workerThreadId: completedWorkerThread.id,
+            mode: "queue",
+            input: expect.objectContaining({
+              text: "Pick up from the completed release pass and summarize the remaining DMG blockers.",
+              messageId: expect.any(String),
+            }),
+          }),
+        );
+      });
+
+      (
+        document.querySelector(
+          `button[aria-label="Cancel ${workerThread.title}"]`,
+        ) as HTMLButtonElement | null
+      )?.click();
+
+      await vi.waitFor(() => {
+        expect(dispatchCommandSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            type: "thread.session.stop",
+            threadId: workerThread.id,
           }),
         );
       });

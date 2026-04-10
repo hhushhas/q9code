@@ -6,8 +6,10 @@ import {
   extractWorkerFinal,
   extractManagerDelegation,
   MANAGER_CHECKLIST_FENCE,
+  MANAGER_WORKER_MODEL_SELECTION,
   pickDefaultManagerThreadTitle,
   resolveManagerThreadTitle,
+  resolveManagerWorkerModelSelection,
   stripManagerControlMarkup,
   stripManagerDelegation,
   stripWorkerFinal,
@@ -103,6 +105,20 @@ describe("extractManagerDelegation", () => {
         },
       ],
     });
+  });
+});
+
+describe("manager worker model selection defaults", () => {
+  it("defaults manager-launched workers to fastMode false", () => {
+    expect(MANAGER_WORKER_MODEL_SELECTION).toEqual({
+      provider: "codex",
+      model: "gpt-5.4",
+      options: {
+        fastMode: false,
+      },
+    });
+    expect(resolveManagerWorkerModelSelection()).toEqual(MANAGER_WORKER_MODEL_SELECTION);
+    expect(resolveManagerWorkerModelSelection(null)).toEqual(MANAGER_WORKER_MODEL_SELECTION);
   });
 });
 

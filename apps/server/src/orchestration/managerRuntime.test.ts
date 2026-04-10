@@ -79,8 +79,12 @@ describe("buildManagerTurnInput", () => {
     expect(result).toContain("`gpt-5.4`: General smartest.");
     expect(result).toContain("`gpt-5.3-codex`: Code-smart specialist.");
     expect(result).toContain("`gpt-5.4-mini`: Fast high-volume support.");
-    expect(result).toContain('"model":"gpt-5.4-mini"');
+    expect(result).toContain("Fast mode is opt-in only");
+    expect(result).toContain(
+      '{"provider":"codex","model":"gpt-5.4-mini","options":{"reasoningEffort":"medium","fastMode":false}}',
+    );
     expect(result).toContain("Use `gpt-5.4` by default");
+    expect(result).not.toContain('"fastMode":true');
   });
 });
 

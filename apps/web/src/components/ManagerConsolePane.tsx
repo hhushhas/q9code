@@ -21,6 +21,7 @@ import {
   PencilIcon,
   PlusIcon,
   RefreshCwIcon,
+  SquareIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
@@ -149,6 +150,7 @@ export function ManagerConsolePane({
   const [workerInputDraft, setWorkerInputDraft] = useState("");
   const [workerInputMode, setWorkerInputMode] = useState<ManagerWorkerInputMode>("queue");
   const [isSendingWorkerInput, setIsSendingWorkerInput] = useState(false);
+  const [stoppingWorkerId, setStoppingWorkerId] = useState<ThreadId | null>(null);
   const [checklistLoading, setChecklistLoading] = useState(false);
   const [checklistError, setChecklistError] = useState<string | null>(null);
   const [checklistReadAt, setChecklistReadAt] = useState<string | null>(null);
@@ -422,6 +424,43 @@ export function ManagerConsolePane({
     [isSendingWorkerInput, managerThread.id, selectedWorker, workerInputDraft, workerInputMode],
   );
 
+  const stopWorker = useCallback(
+    async (thread: Thread) => {
+      if (stoppingWorkerId === thread.id) {
+        return;
+      }
+
+      const api = readNativeApi();
+      if (!api) {
+        return;
+      }
+
+      setStoppingWorkerId(thread.id);
+      try {
+        await api.orchestration.dispatchCommand({
+          type: "thread.session.stop",
+          commandId: newCommandId(),
+          threadId: thread.id,
+          createdAt: new Date().toISOString(),
+        });
+        toastManager.add({
+          type: "success",
+          title: "Worker cancelled",
+          description: `Stopped ${thread.title}.`,
+        });
+      } catch (error) {
+        toastManager.add({
+          type: "error",
+          title: "Worker cancel failed",
+          description: error instanceof Error ? error.message : "An unexpected error occurred.",
+        });
+      } finally {
+        setStoppingWorkerId((current) => (current === thread.id ? null : current));
+      }
+    },
+    [stoppingWorkerId],
+  );
+
   const saveManagerTitle = useCallback(async () => {
     const trimmed = managerTitleDraft.trim();
     if (trimmed.length === 0) {
@@ -603,8 +642,9 @@ export function ManagerConsolePane({
             <button
               type="button"
               onClick={() => setDelegateDialogOpen(true)}
+              aria-label="Delegate Worker"
+              title="Delegate Worker"
               className="inline-flex items-center text-muted-foreground/50 hover:text-foreground transition-colors"
-              title="Add worker"
             >
               <PlusIcon className="size-3.5" />
             </button>
@@ -622,6 +662,8 @@ export function ManagerConsolePane({
                 const isRunning =
                   thread.session?.status === "running" ||
                   (thread.latestTurn !== null && thread.latestTurn.completedAt === null);
+                const canStopWorker =
+                  thread.session !== null && thread.session.orchestrationStatus !== "stopped";
                 const outcome = normalizeManagerWorkerOutcome(managerThread, thread.id);
 
                 return (
@@ -679,13 +721,29 @@ export function ManagerConsolePane({
                         ) : null}
                       </div>
                     </button>
-                    <button
-                      type="button"
-                      className="ml-2 shrink-0 inline-flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-foreground transition-colors"
-                      onClick={() => openWorkerInputDialog(thread)}
-                    >
-                      <MessageSquareIcon className="size-3" />
-                    </button>
+                    <div className="ml-2 flex shrink-0 items-center gap-1">
+                      {canStopWorker ? (
+                        <button
+                          type="button"
+                          aria-label={`Cancel ${thread.title}`}
+                          title={`Cancel ${thread.title}`}
+                          className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60 transition-colors hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={stoppingWorkerId === thread.id}
+                          onClick={() => void stopWorker(thread)}
+                        >
+                          <SquareIcon className="size-3" />
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        aria-label={`Input ${thread.title}`}
+                        title={`Input ${thread.title}`}
+                        className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-foreground transition-colors"
+                        onClick={() => openWorkerInputDialog(thread)}
+                      >
+                        <MessageSquareIcon className="size-3" />
+                      </button>
+                    </div>
                   </div>
                 );
               })

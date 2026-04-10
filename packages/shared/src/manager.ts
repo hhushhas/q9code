@@ -46,6 +46,9 @@ export const MANAGER_MODEL_SELECTION = {
 export const MANAGER_WORKER_MODEL_SELECTION = {
   provider: "codex",
   model: "gpt-5.4",
+  options: {
+    fastMode: false,
+  },
 } as const satisfies ModelSelection;
 export const MANAGER_INTERACTION_MODE = "default" as const satisfies ProviderInteractionMode;
 export const MANAGER_WORKER_MODEL_CAPABILITIES: ModelCapabilities = {

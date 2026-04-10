@@ -216,6 +216,9 @@ describe("ManagerThreadReactor", () => {
     expect(workers[0]?.modelSelection).toEqual({
       provider: "codex",
       model: "gpt-5.4",
+      options: {
+        fastMode: false,
+      },
     });
 
     const logPath = harness.managerScratchpad?.sessionLogPath ?? "";
@@ -1101,6 +1104,94 @@ describe("ManagerThreadReactor", () => {
     expect(inputModeActivity?.payload).toMatchObject({
       requestedMode: "queue",
       effectiveMode: "queue",
+    });
+  });
+
+  it("reuses the target worker model selection when queuing follow-up input for a completed worker", async () => {
+    const harness = await createHarness();
+    const createdAt = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.makeUnsafe("cmd-thread-create-worker-manager-claude-followup"),
+        threadId: ThreadId.makeUnsafe("thread-worker-claude-followup"),
+        projectId: asProjectId("project-1"),
+        title: "Claude release worker",
+        modelSelection: {
+          provider: "claudeAgent",
+          model: "claude-sonnet-4-6",
+        },
+        role: "worker",
+        managerThreadId: ThreadId.makeUnsafe("thread-manager"),
+        interactionMode: "default",
+        runtimeMode: "full-access",
+        branch: null,
+        worktreePath: null,
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.makeUnsafe("cmd-thread-session-set-worker-manager-claude-followup"),
+        threadId: ThreadId.makeUnsafe("thread-worker-claude-followup"),
+        session: {
+          threadId: ThreadId.makeUnsafe("thread-worker-claude-followup"),
+          status: "stopped",
+          providerName: "claudeAgent",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: createdAt,
+        },
+        createdAt,
+      }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "manager.worker.input.send",
+        commandId: CommandId.makeUnsafe("cmd-manager-worker-claude-followup-send"),
+        managerThreadId: ThreadId.makeUnsafe("thread-manager"),
+        workerThreadId: ThreadId.makeUnsafe("thread-worker-claude-followup"),
+        input: {
+          messageId: asMessageId("msg-manager-worker-claude-followup"),
+          text: "Resume from the completed release pass and check the signing state.",
+          attachments: [],
+        },
+        mode: "queue",
+        createdAt,
+      }),
+    );
+
+    await waitFor(async () => {
+      const events = (await Effect.runPromise(
+        Stream.runCollect(harness.engine.readEvents(0)).pipe(
+          Effect.map((entries) => Array.from(entries) as Array<{ type: string; payload: any }>),
+        ),
+      )) as Array<{ type: string; payload: any }>;
+      return events.some(
+        (event) =>
+          event.type === "thread.turn-start-requested" &&
+          event.payload.messageId === asMessageId("msg-manager-worker-claude-followup"),
+      );
+    });
+
+    const events = (await Effect.runPromise(
+      Stream.runCollect(harness.engine.readEvents(0)).pipe(
+        Effect.map((entries) => Array.from(entries) as Array<{ type: string; payload: any }>),
+      ),
+    )) as Array<{ type: string; payload: any }>;
+    const followUpTurnStart = events.find(
+      (event) =>
+        event.type === "thread.turn-start-requested" &&
+        event.payload.threadId === ThreadId.makeUnsafe("thread-worker-claude-followup") &&
+        event.payload.messageId === asMessageId("msg-manager-worker-claude-followup"),
+    );
+    expect(followUpTurnStart?.payload.modelSelection).toEqual({
+      provider: "claudeAgent",
+      model: "claude-sonnet-4-6",
     });
   });
 
