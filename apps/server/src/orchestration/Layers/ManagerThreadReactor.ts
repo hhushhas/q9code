@@ -3,6 +3,7 @@ import {
   EventId,
   MessageId,
   type OrchestrationEvent,
+  type OrchestrationReadModel,
   type OrchestrationThreadManagerScratchpad,
   ThreadId,
   type OrchestrationThread,
@@ -44,6 +45,13 @@ type RelevantEvent = Extract<
       | "thread.session-set";
   }
 >;
+
+type ThreadContext = {
+  readonly readModel: OrchestrationReadModel;
+  readonly thread: OrchestrationThread;
+  readonly managerThread: OrchestrationThread;
+  readonly projectTitle: string;
+};
 
 const serverCommandId = (tag: string): CommandId =>
   CommandId.makeUnsafe(`server:${tag}:${crypto.randomUUID()}`);
@@ -163,8 +171,30 @@ const make = Effect.gen(function* () {
       thread,
       managerThread,
       projectTitle,
-    };
+    } satisfies ThreadContext;
   });
+
+  const resolveThreadContextEventually = Effect.fn("resolveThreadContextEventually")(
+    function* (input: {
+      readonly threadId: ThreadId;
+      readonly attempts?: number;
+      readonly predicate?: (context: ThreadContext) => boolean;
+    }) {
+      const attempts = input.attempts ?? 20;
+
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        const context = yield* resolveThreadContext(input.threadId);
+        if (context && (!input.predicate || input.predicate(context))) {
+          return context;
+        }
+        if (attempt < attempts - 1) {
+          yield* Effect.sleep("10 millis");
+        }
+      }
+
+      return yield* resolveThreadContext(input.threadId);
+    },
+  );
 
   const appendToManagerLog = Effect.fn("appendToManagerLog")(function* (input: {
     readonly threadId: ThreadId;
@@ -495,13 +525,14 @@ const make = Effect.gen(function* () {
 
     managerAlertDispatchInFlight.add(managerThreadId);
     pendingManagerAlerts.delete(managerThreadId);
+    const messageId = MessageId.makeUnsafe(crypto.randomUUID());
 
     yield* orchestrationEngine.dispatch({
       type: "thread.turn.start",
       commandId: serverCommandId("manager-alert-turn-start"),
       threadId: managerThread.id,
       message: {
-        messageId: MessageId.makeUnsafe(crypto.randomUUID()),
+        messageId,
         role: "user",
         text: formatManagerInternalAlert(alerts),
         attachments: [],
@@ -511,6 +542,13 @@ const make = Effect.gen(function* () {
       runtimeMode: managerThread.runtimeMode,
       interactionMode: MANAGER_INTERACTION_MODE,
       createdAt: alerts.at(-1)?.createdAt ?? new Date().toISOString(),
+    });
+    yield* resolveThreadContextEventually({
+      threadId: managerThread.id,
+      predicate: (context) =>
+        context.thread.messages.some(
+          (message) => message.id === messageId && message.role === "user",
+        ),
     });
   });
 
@@ -592,7 +630,31 @@ const make = Effect.gen(function* () {
     event: Extract<RelevantEvent, { type: "manager.worker-input-requested" }>,
   ) {
     return Effect.gen(function* () {
-      const managerContext = yield* resolveThreadContext(event.payload.managerThreadId);
+      const managerContext = yield* resolveThreadContextEventually({
+        threadId: event.payload.managerThreadId,
+        predicate: (context) => {
+          if (context.thread.role !== "manager") {
+            return false;
+          }
+          const workerThread = context.readModel.threads.find(
+            (thread) =>
+              thread.id === event.payload.workerThreadId &&
+              thread.managerThreadId === context.thread.id &&
+              thread.deletedAt === null,
+          );
+          if (!workerThread) {
+            return false;
+          }
+          if (event.payload.mode !== "interrupt") {
+            return true;
+          }
+          return (
+            workerThread.session?.status === "running" ||
+            workerThread.session?.activeTurnId !== null ||
+            (workerThread.latestTurn !== null && workerThread.latestTurn.completedAt === null)
+          );
+        },
+      });
       if (!managerContext || managerContext.thread.role !== "manager") {
         return;
       }
@@ -729,7 +791,16 @@ const make = Effect.gen(function* () {
         }
 
         case "thread.meta-updated": {
-          const context = yield* resolveThreadContext(event.payload.threadId);
+          const context = yield* resolveThreadContextEventually({
+            threadId: event.payload.threadId,
+            predicate: (resolved) =>
+              resolved.thread.role === "manager" &&
+              (event.payload.title === undefined ||
+                resolved.thread.title === event.payload.title) &&
+              (event.payload.managerScratchpad === undefined ||
+                resolved.thread.managerScratchpad?.folderPath ===
+                  event.payload.managerScratchpad?.folderPath),
+          });
           if (!context || context.thread.role !== "manager") {
             return;
           }
@@ -807,7 +878,14 @@ const make = Effect.gen(function* () {
             return;
           }
 
-          const context = yield* resolveThreadContext(event.payload.threadId);
+          const context = yield* resolveThreadContextEventually({
+            threadId: event.payload.threadId,
+            predicate: (resolved) =>
+              resolved.thread.messages.some(
+                (entry) =>
+                  entry.id === event.payload.messageId && entry.role === event.payload.role,
+              ),
+          });
           if (!context) {
             return;
           }
