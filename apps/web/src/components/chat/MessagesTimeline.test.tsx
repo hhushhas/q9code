@@ -43,6 +43,70 @@ beforeAll(() => {
 });
 
 describe("MessagesTimeline", () => {
+  it("renders user message markdown with emphasis, lists, code, and links", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        hasMessages
+        isWorking={false}
+        activeTurnInProgress={false}
+        activeTurnStartedAt={null}
+        scrollContainer={null}
+        timelineEntries={[
+          {
+            id: "entry-1",
+            kind: "message",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            message: {
+              id: MessageId.makeUnsafe("message-markdown-user"),
+              role: "user",
+              text: [
+                "Use **bold**, _italic_, and `inline` code.",
+                "",
+                "- First list item",
+                "- Second list item",
+                "",
+                "[Read docs](https://example.com/docs)",
+                "",
+                "```ts",
+                "const value = 42;",
+                "```",
+              ].join("\n"),
+              createdAt: "2026-03-17T19:12:28.000Z",
+              streaming: false,
+            },
+          },
+        ]}
+        completionDividerBeforeEntryId={null}
+        completionSummary={null}
+        turnDiffSummaryByAssistantMessageId={new Map()}
+        nowIso="2026-03-17T19:12:30.000Z"
+        expandedWorkGroups={{}}
+        onToggleWorkGroup={() => {}}
+        onOpenTurnDiff={() => {}}
+        revertTurnCountByUserMessageId={new Map()}
+        onRevertUserMessage={() => {}}
+        isRevertingCheckpoint={false}
+        onImageExpand={() => {}}
+        markdownCwd={undefined}
+        resolvedTheme="light"
+        timestampFormat="locale"
+        workspaceRoot={undefined}
+      />,
+    );
+
+    expect(markup).toContain("chat-markdown");
+    expect(markup).toContain("<strong>bold</strong>");
+    expect(markup).toContain("<em>italic</em>");
+    expect(markup).toContain("<code>inline</code>");
+    expect(markup).toContain("<ul>");
+    expect(markup).toContain("First list item");
+    expect(markup).toContain('href="https://example.com/docs"');
+    expect(markup).toContain('target="_blank"');
+    expect(markup).toContain("<pre");
+    expect(markup).toContain("const value = 42;");
+  });
+
   it("renders inline terminal labels with the composer chip UI", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(

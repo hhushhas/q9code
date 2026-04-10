@@ -2097,6 +2097,69 @@ describe("ProviderRuntimeIngestion", () => {
     });
   });
 
+  it("projects usage-limit snapshots into normalized thread activities", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+
+    harness.emit({
+      type: "account.rate-limits.updated",
+      eventId: asEventId("evt-account-rate-limits-updated"),
+      provider: "codex",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      payload: {
+        rateLimits: {
+          limitId: "codex",
+          planType: "plus",
+          primary: {
+            usedPercent: 37,
+            windowDurationMins: 300,
+            resetsAt: 1_776_000_000,
+          },
+          secondary: {
+            usedPercent: 12,
+            windowDurationMins: 10_080,
+            resetsAt: 1_776_432_000,
+          },
+          credits: {
+            hasCredits: true,
+            unlimited: false,
+            balance: "$18.41",
+          },
+        },
+      },
+    });
+
+    const thread = await waitForThread(harness.engine, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) => activity.kind === "usage-limit.updated",
+      ),
+    );
+
+    const usageLimitActivity = thread.activities.find(
+      (activity: ProviderRuntimeTestActivity) => activity.kind === "usage-limit.updated",
+    );
+    expect(usageLimitActivity?.payload).toMatchObject({
+      limitId: "codex",
+      planType: "plus",
+      primary: {
+        usedPercent: 37,
+        windowDurationMins: 300,
+        resetsAt: 1_776_000_000,
+      },
+      secondary: {
+        usedPercent: 12,
+        windowDurationMins: 10_080,
+        resetsAt: 1_776_432_000,
+      },
+      credits: {
+        hasCredits: true,
+        unlimited: false,
+        balance: "$18.41",
+      },
+    });
+  });
+
   it("projects Claude usage snapshots with context window into normalized thread activities", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();

@@ -188,7 +188,7 @@ The primary steering surface where the human interacts with the coordinator.
 
 ```text
 +---------------------------------------------------------------------------------------+
-|  T3 Code [ALPHA] | Project: hasan-hq [ MANAGER CONSOLE ]            [ Open ] [ Push ] |
+|  Q9 Code [ALPHA] | Project: hasan-hq [ MANAGER CONSOLE ]            [ Open ] [ Push ] |
 +------------------+--------------------------------------------------------------------+
 | PROJECTS     + |                                                                    |
 | > hasan-hq     | [ PROJECT CONSOLE ] (30%)     | [ MANAGER CONVERSATION ] (70%)     |
@@ -196,7 +196,7 @@ The primary steering surface where the human interacts with the coordinator.
 |   [ ] worker-1 |                                | [BOT] Worker 'auth-patch' is       |
 |   [ ] worker-2 | [ PROJECT SWARM ]              | approximately 80% done.            |
 |                | 2 Active | 1 Blocked           |                                    |
-| > t3code       |                                | [USER] What is blocking 'db-fix'?  |
+| > q9code       |                                | [USER] What is blocking 'db-fix'?  |
 |   [*] MGR      | [ SACRED MEMORY ]              |                                    |
 |                | [F] session-log.md             | [BOT] 'db-fix' needs a schema      |
 |                | [D] scratchpad/                | migration approval.                |

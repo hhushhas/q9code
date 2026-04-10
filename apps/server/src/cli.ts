@@ -355,7 +355,7 @@ const commandFlags = {
 } as const;
 
 const rootCommand = Command.make("t3", commandFlags).pipe(
-  Command.withDescription("Run the T3 Code server."),
+  Command.withDescription("Run the Q9 Code server."),
   Command.withHandler((flags) =>
     Effect.gen(function* () {
       const logLevel = yield* GlobalFlag.LogLevel;

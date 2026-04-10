@@ -107,6 +107,106 @@ function buildContextWindowActivityPayload(
   return event.payload.usage;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
+}
+
+function asFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function asBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function asTrimmedString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function normalizeUsageLimitWindow(window: unknown) {
+  const record = asRecord(window);
+  const usedPercent = asFiniteNumber(record?.usedPercent ?? record?.used_percent);
+  if (usedPercent === undefined) {
+    return undefined;
+  }
+
+  const windowDurationMins = asFiniteNumber(
+    record?.windowDurationMins ?? record?.window_minutes ?? record?.windowMinutes,
+  );
+  const resetsAt = asFiniteNumber(record?.resetsAt ?? record?.reset_at ?? record?.resetAt);
+
+  return {
+    usedPercent,
+    ...(windowDurationMins !== undefined
+      ? { windowDurationMins: Math.max(0, Math.round(windowDurationMins)) }
+      : {}),
+    ...(resetsAt !== undefined ? { resetsAt: Math.round(resetsAt) } : {}),
+  };
+}
+
+function buildUsageLimitActivityPayload(event: ProviderRuntimeEvent) {
+  if (event.type !== "account.rate-limits.updated") {
+    return undefined;
+  }
+
+  const rateLimits = asRecord(event.payload.rateLimits);
+  if (!rateLimits) {
+    return undefined;
+  }
+
+  const nestedRateLimits = asRecord(rateLimits.rateLimits ?? rateLimits.rate_limits);
+  const primary = normalizeUsageLimitWindow(rateLimits.primary ?? nestedRateLimits?.primary);
+  const secondary = normalizeUsageLimitWindow(rateLimits.secondary ?? nestedRateLimits?.secondary);
+  if (!primary && !secondary) {
+    return undefined;
+  }
+
+  const creditsRecord = asRecord(rateLimits.credits);
+  const credits = creditsRecord
+    ? {
+        ...(asBoolean(creditsRecord.hasCredits ?? creditsRecord.has_credits) !== undefined
+          ? { hasCredits: asBoolean(creditsRecord.hasCredits ?? creditsRecord.has_credits) }
+          : {}),
+        ...(asBoolean(creditsRecord.unlimited) !== undefined
+          ? { unlimited: asBoolean(creditsRecord.unlimited) }
+          : {}),
+        ...(asTrimmedString(creditsRecord.balance)
+          ? { balance: asTrimmedString(creditsRecord.balance) }
+          : {}),
+      }
+    : undefined;
+  const spendControlRecord = asRecord(rateLimits.spendControl ?? rateLimits.spend_control);
+  const spendControl =
+    spendControlRecord && asBoolean(spendControlRecord.reached) !== undefined
+      ? { reached: asBoolean(spendControlRecord.reached) }
+      : undefined;
+
+  return {
+    ...(asTrimmedString(rateLimits.limitId ?? rateLimits.limit_id ?? rateLimits.metered_limit_name)
+      ? {
+          limitId: asTrimmedString(
+            rateLimits.limitId ?? rateLimits.limit_id ?? rateLimits.metered_limit_name,
+          ),
+        }
+      : {}),
+    ...(asTrimmedString(rateLimits.limitName ?? rateLimits.limit_name)
+      ? { limitName: asTrimmedString(rateLimits.limitName ?? rateLimits.limit_name) }
+      : {}),
+    ...(asTrimmedString(rateLimits.planType ?? rateLimits.plan_type)
+      ? { planType: asTrimmedString(rateLimits.planType ?? rateLimits.plan_type) }
+      : {}),
+    ...(primary ? { primary } : {}),
+    ...(secondary ? { secondary } : {}),
+    ...(credits &&
+    (credits.hasCredits !== undefined ||
+      credits.unlimited !== undefined ||
+      credits.balance !== undefined)
+      ? { credits }
+      : {}),
+    ...(spendControl ? { spendControl } : {}),
+  };
+}
+
 function normalizeRuntimeTurnState(
   value: string | undefined,
 ): "completed" | "failed" | "interrupted" | "cancelled" {
@@ -421,6 +521,26 @@ function runtimeEventToActivities(
           tone: "info",
           kind: "context-window.updated",
           summary: "Context window updated",
+          payload,
+          turnId: toTurnId(event.turnId) ?? null,
+          ...maybeSequence,
+        },
+      ];
+    }
+
+    case "account.rate-limits.updated": {
+      const payload = buildUsageLimitActivityPayload(event);
+      if (!payload) {
+        return [];
+      }
+
+      return [
+        {
+          id: event.eventId,
+          createdAt: event.createdAt,
+          tone: "info",
+          kind: "usage-limit.updated",
+          summary: "Usage limit updated",
           payload,
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,

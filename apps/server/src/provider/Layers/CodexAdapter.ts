@@ -41,6 +41,10 @@ import {
 } from "../../codexAppServerManager.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
+import {
+  buildAttachmentPromptContext,
+  mergePromptWithAttachmentContext,
+} from "../attachmentPromptContext.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 
@@ -1468,16 +1472,29 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
 
   const sendTurn: CodexAdapterShape["sendTurn"] = Effect.fn("sendTurn")(function* (input) {
     const codexAttachments = yield* Effect.forEach(
-      input.attachments ?? [],
+      (input.attachments ?? []).filter((attachment) => attachment.type === "image"),
       (attachment) => resolveAttachment(input, attachment),
       { concurrency: 1 },
+    );
+    const attachmentPromptContext = yield* buildAttachmentPromptContext({
+      attachmentsDir: serverConfig.attachmentsDir,
+      attachments: input.attachments ?? [],
+    }).pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.mapError((cause) => toRequestError(input.threadId, "turn/start", cause)),
+    );
+    const promptWithAttachmentContext = mergePromptWithAttachmentContext(
+      input.input,
+      attachmentPromptContext,
     );
 
     return yield* Effect.tryPromise({
       try: () => {
         const managerInput = {
           threadId: input.threadId,
-          ...(input.input !== undefined ? { input: input.input } : {}),
+          ...(promptWithAttachmentContext !== undefined
+            ? { input: promptWithAttachmentContext }
+            : {}),
           ...(input.modelSelection?.provider === "codex"
             ? { model: input.modelSelection.model }
             : {}),

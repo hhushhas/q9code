@@ -59,6 +59,40 @@ describe("estimateTimelineMessageHeight", () => {
     ).toBe(574);
   });
 
+  it("uses a compact per-file height for non-image attachments", () => {
+    expect(
+      estimateTimelineMessageHeight({
+        role: "user",
+        text: "hello",
+        attachments: [{ id: "1", type: "file" }],
+      }),
+    ).toBe(170);
+
+    expect(
+      estimateTimelineMessageHeight({
+        role: "user",
+        text: "hello",
+        attachments: [
+          { id: "1", type: "file" },
+          { id: "2", type: "file" },
+        ],
+      }),
+    ).toBe(222);
+  });
+
+  it("combines file rows with image grid height", () => {
+    expect(
+      estimateTimelineMessageHeight({
+        role: "user",
+        text: "hello",
+        attachments: [
+          { id: "1", type: "image" },
+          { id: "2", type: "file" },
+        ],
+      }),
+    ).toBe(398);
+  });
+
   it("does not cap long user message estimates", () => {
     expect(
       estimateTimelineMessageHeight({

@@ -601,7 +601,7 @@ describe("ProviderCommandReactor", () => {
         type: "thread.meta.update",
         commandId: CommandId.makeUnsafe("cmd-thread-branch"),
         threadId: ThreadId.makeUnsafe("thread-1"),
-        branch: "t3code/1234abcd",
+        branch: "q9code/1234abcd",
         worktreePath: "/tmp/provider-project-worktree",
       }),
     );

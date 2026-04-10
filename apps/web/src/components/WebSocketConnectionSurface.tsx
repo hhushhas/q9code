@@ -157,8 +157,11 @@ function buildBlockingCopy(
 function buildConnectionDetails(status: WsConnectionStatus, uiState: WsConnectionUiState): string {
   const details = [
     `state: ${uiState}`,
+    `phase: ${status.phase}`,
     `online: ${status.online ? "yes" : "no"}`,
     `attempts: ${status.attemptCount}`,
+    `reconnectPhase: ${status.reconnectPhase}`,
+    `reconnectAttempts: ${status.reconnectAttemptCount}/${status.reconnectMaxAttempts}`,
   ];
 
   if (status.socketUrl) {
@@ -176,6 +179,9 @@ function buildConnectionDetails(status: WsConnectionStatus, uiState: WsConnectio
   if (status.lastError) {
     details.push(`lastError: ${status.lastError}`);
   }
+  if (status.nextRetryAt) {
+    details.push(`nextRetryAt: ${status.nextRetryAt}`);
+  }
   if (status.closeCode !== null) {
     details.push(`closeCode: ${status.closeCode}`);
   }
@@ -184,6 +190,60 @@ function buildConnectionDetails(status: WsConnectionStatus, uiState: WsConnectio
   }
 
   return details.join("\n");
+}
+
+export function buildConnectionDiagnosticDetails({
+  capturedAt,
+  incident,
+  status,
+  uiState,
+}: {
+  readonly capturedAt?: string;
+  readonly incident: string;
+  readonly status: WsConnectionStatus;
+  readonly uiState: WsConnectionUiState;
+}): string {
+  return [
+    `incident: ${incident}`,
+    `capturedAt: ${capturedAt ?? new Date().toISOString()}`,
+    buildConnectionDetails(status, uiState),
+  ].join("\n");
+}
+
+export function buildSlowRpcAckDiagnosticDetails({
+  capturedAt,
+  requests,
+  status,
+}: {
+  readonly capturedAt?: string;
+  readonly requests: ReadonlyArray<SlowRpcAckRequest>;
+  readonly status: WsConnectionStatus;
+}): string {
+  const effectiveCapturedAt = capturedAt ?? new Date().toISOString();
+  const capturedAtMs = new Date(effectiveCapturedAt).getTime();
+  const requestLines = requests.map((request, index) => {
+    const ageMs = Number.isFinite(capturedAtMs)
+      ? Math.max(0, capturedAtMs - request.startedAtMs)
+      : Math.max(0, Date.now() - request.startedAtMs);
+    return [
+      `slowRequest.${index + 1}.requestId: ${request.requestId}`,
+      `slowRequest.${index + 1}.tag: ${request.tag}`,
+      `slowRequest.${index + 1}.startedAt: ${request.startedAt}`,
+      `slowRequest.${index + 1}.ageMs: ${ageMs}`,
+      `slowRequest.${index + 1}.thresholdMs: ${request.thresholdMs}`,
+    ].join("\n");
+  });
+
+  return [
+    buildConnectionDiagnosticDetails({
+      capturedAt: effectiveCapturedAt,
+      incident: "rpc-ack-slow",
+      status,
+      uiState: getWsConnectionUiState(status),
+    }),
+    `slowRequestCount: ${requests.length}`,
+    ...requestLines,
+  ].join("\n");
 }
 
 function WebSocketBlockingState({
@@ -286,13 +346,19 @@ export function WebSocketConnectionCoordinator() {
           console.warn("Automatic WebSocket reconnect failed", { error });
           return;
         }
+        const connectionStatus = getWsConnectionStatus();
+        const connectionUiState = getWsConnectionUiState(connectionStatus);
         toastManager.add({
           type: "error",
           title: "Reconnect failed",
           description: error instanceof Error ? error.message : "Unable to restart the WebSocket.",
           data: {
             dismissAfterVisibleMs: 8_000,
-            hideCopyButton: true,
+            copyText: buildConnectionDiagnosticDetails({
+              incident: "manual-reconnect-failed",
+              status: connectionStatus,
+              uiState: connectionUiState,
+            }),
           },
         });
       });
@@ -402,7 +468,11 @@ export function WebSocketConnectionCoordinator() {
             title: "Offline",
             type: "warning" as const,
             data: {
-              hideCopyButton: true,
+              copyText: buildConnectionDiagnosticDetails({
+                incident: "ws-offline",
+                status,
+                uiState,
+              }),
             },
           }
         : shouldShowExhaustedToast
@@ -416,7 +486,11 @@ export function WebSocketConnectionCoordinator() {
               title: "Disconnected from T3 Server",
               type: "error" as const,
               data: {
-                hideCopyButton: true,
+                copyText: buildConnectionDiagnosticDetails({
+                  incident: "ws-reconnect-exhausted",
+                  status,
+                  uiState,
+                }),
               },
             }
           : {
@@ -432,7 +506,11 @@ export function WebSocketConnectionCoordinator() {
               title: buildReconnectTitle(status),
               type: "loading" as const,
               data: {
-                hideCopyButton: true,
+                copyText: buildConnectionDiagnosticDetails({
+                  incident: "ws-reconnecting",
+                  status,
+                  uiState,
+                }),
               },
             };
 
@@ -516,6 +594,12 @@ export function SlowRpcAckToastCoordinator() {
       timeout: 0,
       title: "Some requests are slow",
       type: "warning" as const,
+      data: {
+        copyText: buildSlowRpcAckDiagnosticDetails({
+          requests: slowRequests,
+          status,
+        }),
+      },
     };
 
     if (toastIdRef.current) {

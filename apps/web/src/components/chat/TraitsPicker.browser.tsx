@@ -171,8 +171,8 @@ async function mountClaudePicker(props?: {
   const draftsByThreadId: Record<ThreadId, ComposerThreadDraftState> = {
     [CLAUDE_THREAD_ID]: {
       prompt: props?.prompt ?? "",
-      images: [],
-      nonPersistedImageIds: [],
+      attachments: [],
+      nonPersistedAttachmentIds: [],
       persistedAttachments: [],
       terminalContexts: [],
       modelSelectionByProvider: props?.skipDraftModelOptions
@@ -374,8 +374,8 @@ async function mountCodexPicker(props: { model?: string; options?: CodexModelOpt
   const draftsByThreadId: Record<ThreadId, ComposerThreadDraftState> = {
     [threadId]: {
       prompt: "",
-      images: [],
-      nonPersistedImageIds: [],
+      attachments: [],
+      nonPersistedAttachmentIds: [],
       persistedAttachments: [],
       terminalContexts: [],
       modelSelectionByProvider: {

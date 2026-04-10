@@ -98,10 +98,10 @@ const makeCheckpointStore = Effect.gen(function* () {
         const commitEnv: NodeJS.ProcessEnv = {
           ...process.env,
           GIT_INDEX_FILE: tempIndexPath,
-          GIT_AUTHOR_NAME: "T3 Code",
-          GIT_AUTHOR_EMAIL: "t3code@users.noreply.github.com",
-          GIT_COMMITTER_NAME: "T3 Code",
-          GIT_COMMITTER_EMAIL: "t3code@users.noreply.github.com",
+          GIT_AUTHOR_NAME: "Q9 Code",
+          GIT_AUTHOR_EMAIL: "q9code@users.noreply.github.com",
+          GIT_COMMITTER_NAME: "Q9 Code",
+          GIT_COMMITTER_EMAIL: "q9code@users.noreply.github.com",
         };
 
         const headExists = yield* hasHeadCommit(input.cwd);
@@ -137,7 +137,7 @@ const makeCheckpointStore = Effect.gen(function* () {
           });
         }
 
-        const message = `t3 checkpoint ref=${input.checkpointRef}`;
+        const message = `q9 checkpoint ref=${input.checkpointRef}`;
         const commitTreeResult = yield* git.execute({
           operation,
           cwd: input.cwd,

@@ -24,6 +24,7 @@ export type ThreadToastData = {
   tooltipStyle?: boolean;
   dismissAfterVisibleMs?: number;
   hideCopyButton?: boolean;
+  copyText?: string;
 };
 
 const toastManager = Toast.createToastManager<ThreadToastData>();
@@ -56,6 +57,26 @@ function CopyErrorButton({ text }: { text: string }) {
       )}
     </button>
   );
+}
+
+function resolveToastCopyText(toast: {
+  readonly description?: unknown | undefined;
+  readonly type?: string | undefined;
+  readonly data?: ThreadToastData | undefined;
+}): string | null {
+  if (toast.data?.hideCopyButton) {
+    return null;
+  }
+
+  if (typeof toast.data?.copyText === "string" && toast.data.copyText.trim().length > 0) {
+    return toast.data.copyText;
+  }
+
+  if (toast.type === "error" && typeof toast.description === "string") {
+    return toast.description;
+  }
+
+  return null;
 }
 
 type ToastPosition =
@@ -219,6 +240,7 @@ function Toasts({ position = "top-right" }: { position: ToastPosition }) {
             visibleIndex,
             visibleToastLayout.items.length,
           );
+          const copyText = resolveToastCopyText(toast);
 
           return (
             <Toast.Root
@@ -312,9 +334,7 @@ function Toasts({ position = "top-right" }: { position: ToastPosition }) {
                         className="min-w-0 wrap-break-word font-medium"
                         data-slot="toast-title"
                       />
-                      {toast.type === "error" &&
-                        typeof toast.description === "string" &&
-                        !toast.data?.hideCopyButton && <CopyErrorButton text={toast.description} />}
+                      {copyText !== null && <CopyErrorButton text={copyText} />}
                     </div>
                     <Toast.Description
                       className="min-w-0 select-text wrap-break-word text-muted-foreground"
@@ -361,6 +381,7 @@ function AnchoredToasts() {
             const Icon = toast.type ? TOAST_ICONS[toast.type as keyof typeof TOAST_ICONS] : null;
             const tooltipStyle = toast.data?.tooltipStyle ?? false;
             const positionerProps = toast.positionerProps;
+            const copyText = resolveToastCopyText(toast);
 
             if (!positionerProps?.anchor) {
               return null;
@@ -406,11 +427,7 @@ function AnchoredToasts() {
                               className="min-w-0 wrap-break-word font-medium"
                               data-slot="toast-title"
                             />
-                            {toast.type === "error" &&
-                              typeof toast.description === "string" &&
-                              !toast.data?.hideCopyButton && (
-                                <CopyErrorButton text={toast.description} />
-                              )}
+                            {copyText !== null && <CopyErrorButton text={copyText} />}
                           </div>
                           <Toast.Description
                             className="min-w-0 select-text wrap-break-word text-muted-foreground"

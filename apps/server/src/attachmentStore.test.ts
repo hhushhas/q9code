@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  attachmentRelativePath,
   createAttachmentId,
   parseThreadSegmentFromAttachmentId,
   resolveAttachmentPathById,
@@ -71,5 +72,17 @@ describe("attachmentStore", () => {
     } finally {
       fs.rmSync(attachmentsDir, { recursive: true, force: true });
     }
+  });
+
+  it("uses supported file extensions for non-image attachments", () => {
+    const relativePath = attachmentRelativePath({
+      type: "file",
+      id: "thread-1-file",
+      name: "notes.md",
+      mimeType: "text/markdown",
+      sizeBytes: 128,
+    });
+
+    expect(relativePath).toBe("thread-1-file.md");
   });
 });

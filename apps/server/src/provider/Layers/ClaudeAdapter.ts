@@ -63,6 +63,10 @@ import {
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
+import {
+  buildAttachmentPromptContext,
+  mergePromptWithAttachmentContext,
+} from "../attachmentPromptContext.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { getClaudeModelCapabilities } from "./ClaudeProvider.ts";
 import {
@@ -509,7 +513,7 @@ const CLAUDE_SETTING_SOURCES = [
   "local",
 ] as const satisfies ReadonlyArray<SettingSource>;
 
-function buildPromptText(input: ProviderSendTurnInput): string {
+function buildPromptText(input: ProviderSendTurnInput, promptText: string | undefined): string {
   const rawEffort =
     input.modelSelection?.provider === "claudeAgent" ? input.modelSelection.options?.effort : null;
   const claudeModel =
@@ -521,7 +525,7 @@ function buildPromptText(input: ProviderSendTurnInput): string {
   const trimmedEffort = trimOrNull(rawEffort);
   const promptEffort =
     trimmedEffort && caps.promptInjectedEffortLevels.includes(trimmedEffort) ? trimmedEffort : null;
-  return applyClaudePromptEffortPrefix(input.input?.trim() ?? "", promptEffort);
+  return applyClaudePromptEffortPrefix(promptText?.trim() ?? "", promptEffort);
 }
 
 function buildUserMessage(input: {
@@ -559,7 +563,25 @@ const buildUserMessageEffect = Effect.fn("buildUserMessageEffect")(function* (
     readonly attachmentsDir: string;
   },
 ) {
-  const text = buildPromptText(input);
+  const attachmentPromptContext = yield* buildAttachmentPromptContext({
+    attachmentsDir: dependencies.attachmentsDir,
+    attachments: input.attachments ?? [],
+  }).pipe(
+    Effect.provideService(FileSystem.FileSystem, dependencies.fileSystem),
+    Effect.mapError(
+      (cause) =>
+        new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: "turn/start",
+          detail: toMessage(cause, "Failed to build attachment prompt context."),
+          cause,
+        }),
+    ),
+  );
+  const text = buildPromptText(
+    input,
+    mergePromptWithAttachmentContext(input.input, attachmentPromptContext),
+  );
   const sdkContent: Array<Record<string, unknown>> = [];
 
   if (text.length > 0) {

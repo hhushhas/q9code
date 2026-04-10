@@ -115,7 +115,7 @@ function subscribe(listener: () => void): () => void {
 }
 
 export function useTheme() {
-  const snapshot = useSyncExternalStore(subscribe, getSnapshot);
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const theme = snapshot.theme;
 
   const resolvedTheme: "light" | "dark" = resolveTheme(theme, snapshot.systemDark);

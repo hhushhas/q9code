@@ -63,6 +63,7 @@ import {
   formatInlineTerminalContextLabel,
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
+import { formatAttachmentSize, partitionAttachments } from "../../chatAttachments";
 
 const ALWAYS_UNVIRTUALIZED_TAIL_ROWS = 8;
 
@@ -357,7 +358,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       {row.kind === "message" &&
         row.message.role === "user" &&
         (() => {
-          const userImages = row.message.attachments ?? [];
+          const userAttachments = row.message.attachments ?? [];
+          const { images: userImages, files: userFiles } = partitionAttachments(userAttachments);
           const displayedUserMessage = deriveDisplayedUserMessageState(row.message.text);
           const terminalContexts = displayedUserMessage.contexts;
           const canRevertAgentWork = revertTurnCountByUserMessageId.has(row.message.id);
@@ -365,41 +367,81 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             <div className="flex w-full justify-end">
               <div className="group flex max-w-[80%] flex-col items-end gap-1">
                 <div className="w-max max-w-full min-w-0 self-end rounded-xl border border-border/70 bg-secondary px-[14px] py-1.5">
+                  {userFiles.length > 0 && (
+                    <div className={cn("grid gap-2", userImages.length > 0 ? "mb-2" : "mb-0")}>
+                      {userFiles.map((attachment) => {
+                        const content = (
+                          <>
+                            <VscodeEntryIcon
+                              pathValue={attachment.name}
+                              kind="file"
+                              theme={resolvedTheme}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-sm font-medium text-foreground">
+                                {attachment.name}
+                              </div>
+                              <div className="truncate text-xs text-muted-foreground/70">
+                                {attachment.mimeType} · {formatAttachmentSize(attachment.sizeBytes)}
+                              </div>
+                            </div>
+                          </>
+                        );
+
+                        return attachment.url ? (
+                          <a
+                            key={attachment.id}
+                            href={attachment.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex min-w-[240px] max-w-[420px] items-center gap-3 rounded-lg border border-border/80 bg-background/75 px-3 py-2 text-left transition-colors duration-150 hover:bg-background"
+                          >
+                            {content}
+                          </a>
+                        ) : (
+                          <div
+                            key={attachment.id}
+                            className="flex min-w-[240px] max-w-[420px] items-center gap-3 rounded-lg border border-border/80 bg-background/75 px-3 py-2 text-left"
+                          >
+                            {content}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                   {userImages.length > 0 && (
                     <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
-                      {userImages.map(
-                        (image: NonNullable<TimelineMessage["attachments"]>[number]) => (
-                          <div
-                            key={image.id}
-                            className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
-                          >
-                            {image.previewUrl ? (
-                              <button
-                                type="button"
-                                className="h-full w-full cursor-zoom-in"
-                                aria-label={`Preview ${image.name}`}
-                                onClick={() => {
-                                  const preview = buildExpandedImagePreview(userImages, image.id);
-                                  if (!preview) return;
-                                  onImageExpand(preview);
-                                }}
-                              >
-                                <img
-                                  src={image.previewUrl}
-                                  alt={image.name}
-                                  className="h-full max-h-[220px] w-full object-cover"
-                                  onLoad={onTimelineImageLoad}
-                                  onError={onTimelineImageLoad}
-                                />
-                              </button>
-                            ) : (
-                              <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-xs text-muted-foreground/70">
-                                {image.name}
-                              </div>
-                            )}
-                          </div>
-                        ),
-                      )}
+                      {userImages.map((image) => (
+                        <div
+                          key={image.id}
+                          className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
+                        >
+                          {image.previewUrl ? (
+                            <button
+                              type="button"
+                              className="h-full w-full cursor-zoom-in"
+                              aria-label={`Preview ${image.name}`}
+                              onClick={() => {
+                                const preview = buildExpandedImagePreview(userImages, image.id);
+                                if (!preview) return;
+                                onImageExpand(preview);
+                              }}
+                            >
+                              <img
+                                src={image.previewUrl}
+                                alt={image.name}
+                                className="h-full max-h-[220px] w-full object-cover"
+                                onLoad={onTimelineImageLoad}
+                                onError={onTimelineImageLoad}
+                              />
+                            </button>
+                          ) : (
+                            <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-xs text-muted-foreground/70">
+                              {image.name}
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   )}
                   {(displayedUserMessage.visibleText.trim().length > 0 ||
@@ -407,6 +449,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     <UserMessageBody
                       text={displayedUserMessage.visibleText}
                       terminalContexts={terminalContexts}
+                      markdownCwd={markdownCwd}
                     />
                   )}
                 </div>
@@ -634,8 +677,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
 });
 
-type TimelineEntry = ReturnType<typeof deriveTimelineEntries>[number];
-type TimelineMessage = Extract<TimelineEntry, { kind: "message" }>["message"];
 type TimelineWorkEntry = Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"][number];
 type TimelineRow = MessagesTimelineRow;
 
@@ -685,6 +726,7 @@ const UserMessageTerminalContextInlineLabel = memo(
 const UserMessageBody = memo(function UserMessageBody(props: {
   text: string;
   terminalContexts: ParsedTerminalContextEntry[];
+  markdownCwd: string | undefined;
 }) {
   if (props.terminalContexts.length > 0) {
     const hasEmbeddedInlineLabels = textContainsInlineTerminalContextLabels(
@@ -769,9 +811,9 @@ const UserMessageBody = memo(function UserMessageBody(props: {
   }
 
   return (
-    <pre className="whitespace-pre-wrap wrap-break-word font-mono text-sm leading-relaxed text-foreground">
-      {props.text}
-    </pre>
+    <div className="[&_.chat-markdown]:text-foreground">
+      <ChatMarkdown text={props.text} cwd={props.markdownCwd} isStreaming={false} />
+    </div>
   );
 });
 

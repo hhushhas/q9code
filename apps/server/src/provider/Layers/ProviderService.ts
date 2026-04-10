@@ -331,7 +331,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         if (!settings.providers[input.provider].enabled) {
           return yield* toValidationError(
             "ProviderService.startSession",
-            `Provider '${input.provider}' is disabled in T3 Code settings.`,
+            `Provider '${input.provider}' is disabled in Q9 Code settings.`,
           );
         }
         const persistedBinding = Option.getOrUndefined(yield* directory.getBinding(threadId));

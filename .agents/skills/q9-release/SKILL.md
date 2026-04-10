@@ -63,4 +63,4 @@ Ship Q9 desktop releases from this repo with the fork-aware workflow below.
 
 - Never use `bun test`; always use `bun run test`.
 - Keep release commits scoped. Do not accidentally ship unrelated dirty worktree changes.
-- If verification fails in a local clone because branch names still derive from `t3code`, verify from the fork clone and fix the fork-specific behavior before packaging.
+- If verification fails in a local clone because branch names still derive from `q9code`, verify from the fork clone and fix the fork-specific behavior before packaging.

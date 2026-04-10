@@ -19,17 +19,24 @@ function messageRoleLabel(message: ChatMessage): "USER" | "ASSISTANT" {
 }
 
 function attachmentSummary(message: ChatMessage): string | null {
-  const imageAttachments = message.attachments?.filter((attachment) => attachment.type === "image");
-  const count = imageAttachments?.length ?? 0;
-  if (count === 0) {
+  const attachments = message.attachments ?? [];
+  if (attachments.length === 0) {
     return null;
   }
 
-  const names = imageAttachments?.slice(0, 3).map((image) => image.name) ?? [];
+  const imageCount = attachments.filter((attachment) => attachment.type === "image").length;
+  const fileCount = attachments.length - imageCount;
+  const names = attachments.slice(0, 3).map((attachment) => attachment.name);
   const namesSummary = names.join(", ");
-  const extraCount = count - names.length;
+  const extraCount = attachments.length - names.length;
   const extraSummary = extraCount > 0 ? ` (+${extraCount} more)` : "";
-  return `[Attached image${count === 1 ? "" : "s"}: ${namesSummary}${extraSummary}]`;
+  const label =
+    imageCount > 0 && fileCount > 0
+      ? "attachments"
+      : imageCount > 0
+        ? `image${imageCount === 1 ? "" : "s"}`
+        : `file${fileCount === 1 ? "" : "s"}`;
+  return `[Attached ${label}: ${namesSummary}${extraSummary}]`;
 }
 
 function buildMessageBlock(message: ChatMessage): string {

@@ -113,4 +113,29 @@ describe("ProviderSendTurnInput", () => {
     expect(parsed.modelSelection.options?.effort).toBe("ultrathink");
     expect(parsed.modelSelection.options?.fastMode).toBe(true);
   });
+
+  it("accepts supported non-image file attachments", () => {
+    const parsed = decodeProviderSendTurnInput({
+      threadId: "thread-1",
+      attachments: [
+        {
+          type: "file",
+          id: "attachment-1",
+          name: "notes.md",
+          mimeType: "text/markdown",
+          sizeBytes: 256,
+        },
+      ],
+    });
+
+    expect(parsed.attachments).toEqual([
+      {
+        type: "file",
+        id: "attachment-1",
+        name: "notes.md",
+        mimeType: "text/markdown",
+        sizeBytes: 256,
+      },
+    ]);
+  });
 });

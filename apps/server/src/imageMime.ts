@@ -1,4 +1,5 @@
 import Mime from "@effect/platform-node/Mime";
+export { parseBase64DataUrl } from "./attachmentMime";
 
 export const IMAGE_EXTENSION_BY_MIME_TYPE: Record<string, string> = {
   "image/avif": ".avif",
@@ -28,31 +29,6 @@ export const SAFE_IMAGE_FILE_EXTENSIONS = new Set([
   ".tiff",
   ".webp",
 ]);
-
-export function parseBase64DataUrl(
-  dataUrl: string,
-): { readonly mimeType: string; readonly base64: string } | null {
-  const match = /^data:([^,]+),([a-z0-9+/=\r\n ]+)$/i.exec(dataUrl.trim());
-  if (!match) return null;
-
-  const headerParts = (match[1] ?? "")
-    .split(";")
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0);
-  if (headerParts.length < 2) {
-    return null;
-  }
-  const trailingToken = headerParts.at(-1)?.toLowerCase();
-  if (trailingToken !== "base64") {
-    return null;
-  }
-
-  const mimeType = headerParts[0]?.toLowerCase();
-  const base64 = match[2]?.replace(/\s+/g, "");
-  if (!mimeType || !base64) return null;
-
-  return { mimeType, base64 };
-}
 
 export function inferImageExtension(input: { mimeType: string; fileName?: string }): string {
   const key = input.mimeType.toLowerCase();
