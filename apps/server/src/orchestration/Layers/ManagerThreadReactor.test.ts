@@ -1081,6 +1081,16 @@ describe("ManagerThreadReactor", () => {
       ),
     ).toBe(false);
 
+    await waitFor(async () => {
+      const readModel = await Effect.runPromise(harness.engine.getReadModel());
+      const manager = readModel.threads.find(
+        (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+      );
+      return (manager?.activities ?? []).some(
+        (activity) => activity.kind === "manager.worker.input.mode",
+      );
+    });
+
     const readModel = await Effect.runPromise(harness.engine.getReadModel());
     const manager = readModel.threads.find(
       (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
