@@ -5,6 +5,7 @@ import {
   MessageId,
   NonNegativeInt,
   OrchestrationCheckpointFile,
+  OrchestrationScheduledMessageTarget,
   OrchestrationThreadManagerScratchpad,
   OrchestrationProposedPlanId,
   OrchestrationReadModel,
@@ -38,6 +39,7 @@ import { ProjectionState } from "../../persistence/Services/ProjectionState.ts";
 import { ProjectionThreadActivity } from "../../persistence/Services/ProjectionThreadActivities.ts";
 import { ProjectionThreadMessage } from "../../persistence/Services/ProjectionThreadMessages.ts";
 import { ProjectionThreadProposedPlan } from "../../persistence/Services/ProjectionThreadProposedPlans.ts";
+import { ProjectionThreadScheduledMessage } from "../../persistence/Services/ProjectionThreadScheduledMessages.ts";
 import { ProjectionThreadSession } from "../../persistence/Services/ProjectionThreadSessions.ts";
 import { ProjectionThread } from "../../persistence/Services/ProjectionThreads.ts";
 import { ORCHESTRATION_PROJECTOR_NAMES } from "./ProjectionPipeline.ts";
@@ -72,6 +74,12 @@ const ProjectionThreadActivityDbRowSchema = ProjectionThreadActivity.mapFields(
   Struct.assign({
     payload: Schema.fromJsonString(Schema.Unknown),
     sequence: Schema.NullOr(NonNegativeInt),
+  }),
+);
+const ProjectionThreadScheduledMessageDbRowSchema = ProjectionThreadScheduledMessage.mapFields(
+  Struct.assign({
+    target: Schema.fromJsonString(OrchestrationScheduledMessageTarget),
+    delayedDueToRecovery: Schema.Number,
   }),
 );
 const ProjectionThreadSessionDbRowSchema = ProjectionThreadSession;
@@ -124,6 +132,7 @@ const REQUIRED_SNAPSHOT_PROJECTORS = [
   ORCHESTRATION_PROJECTOR_NAMES.threadMessages,
   ORCHESTRATION_PROJECTOR_NAMES.threadProposedPlans,
   ORCHESTRATION_PROJECTOR_NAMES.threadActivities,
+  ORCHESTRATION_PROJECTOR_NAMES.threadScheduledMessages,
   ORCHESTRATION_PROJECTOR_NAMES.threadSessions,
   ORCHESTRATION_PROJECTOR_NAMES.checkpoints,
 ] as const;
@@ -282,6 +291,31 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           sequence ASC,
           created_at ASC,
           activity_id ASC
+      `,
+  });
+
+  const listThreadScheduledMessageRows = SqlSchema.findAll({
+    Request: Schema.Void,
+    Result: ProjectionThreadScheduledMessageDbRowSchema,
+    execute: () =>
+      sql`
+        SELECT
+          scheduled_message_id AS "scheduledMessageId",
+          thread_id AS "threadId",
+          content,
+          scheduled_for AS "scheduledFor",
+          target_json AS "target",
+          delivery_mode AS "deliveryMode",
+          status,
+          created_at AS "createdAt",
+          updated_at AS "updatedAt",
+          delivered_at AS "deliveredAt",
+          cancelled_at AS "cancelledAt",
+          failed_at AS "failedAt",
+          failure_reason AS "failureReason",
+          delayed_due_to_recovery AS "delayedDueToRecovery"
+        FROM projection_thread_scheduled_messages
+        ORDER BY thread_id ASC, created_at ASC, scheduled_message_id ASC
       `,
   });
 
@@ -459,6 +493,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             messageRows,
             proposedPlanRows,
             activityRows,
+            scheduledMessageRows,
             sessionRows,
             checkpointRows,
             latestTurnRows,
@@ -504,6 +539,14 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 ),
               ),
             ),
+            listThreadScheduledMessageRows(undefined).pipe(
+              Effect.mapError(
+                toPersistenceSqlOrDecodeError(
+                  "ProjectionSnapshotQuery.getSnapshot:listThreadScheduledMessages:query",
+                  "ProjectionSnapshotQuery.getSnapshot:listThreadScheduledMessages:decodeRows",
+                ),
+              ),
+            ),
             listThreadSessionRows(undefined).pipe(
               Effect.mapError(
                 toPersistenceSqlOrDecodeError(
@@ -541,6 +584,10 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           const messagesByThread = new Map<string, Array<OrchestrationMessage>>();
           const proposedPlansByThread = new Map<string, Array<OrchestrationProposedPlan>>();
           const activitiesByThread = new Map<string, Array<OrchestrationThreadActivity>>();
+          const scheduledMessagesByThread = new Map<
+            string,
+            Array<OrchestrationThread["scheduledMessages"][number]>
+          >();
           const checkpointsByThread = new Map<string, Array<OrchestrationCheckpointSummary>>();
           const sessionsByThread = new Map<string, OrchestrationSession>();
           const latestTurnByThread = new Map<string, OrchestrationLatestTurn>();
@@ -602,6 +649,28 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
               createdAt: row.createdAt,
             });
             activitiesByThread.set(row.threadId, threadActivities);
+          }
+
+          for (const row of scheduledMessageRows) {
+            updatedAt = maxIso(updatedAt, row.updatedAt);
+            const threadScheduledMessages = scheduledMessagesByThread.get(row.threadId) ?? [];
+            threadScheduledMessages.push({
+              id: row.scheduledMessageId,
+              ownerThreadId: row.threadId,
+              content: row.content,
+              scheduledFor: row.scheduledFor,
+              target: row.target,
+              deliveryMode: row.deliveryMode,
+              status: row.status,
+              createdAt: row.createdAt,
+              updatedAt: row.updatedAt,
+              deliveredAt: row.deliveredAt,
+              cancelledAt: row.cancelledAt,
+              failedAt: row.failedAt,
+              failureReason: row.failureReason,
+              delayedDueToRecovery: row.delayedDueToRecovery === 1,
+            });
+            scheduledMessagesByThread.set(row.threadId, threadScheduledMessages);
           }
 
           for (const row of checkpointRows) {
@@ -697,6 +766,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
               messages: messagesByThread.get(row.threadId) ?? [],
               proposedPlans: proposedPlansByThread.get(row.threadId) ?? [],
               activities: activitiesByThread.get(row.threadId) ?? [],
+              scheduledMessages: scheduledMessagesByThread.get(row.threadId) ?? [],
               checkpoints: checkpointsByThread.get(row.threadId) ?? [],
               session: sessionsByThread.get(row.threadId) ?? null,
             } satisfies OrchestrationThread;

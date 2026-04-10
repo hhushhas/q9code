@@ -21,6 +21,7 @@ import {
   ThreadMetaUpdatedPayload,
   ThreadProposedPlanUpsertedPayload,
   ThreadRuntimeModeSetPayload,
+  ThreadScheduledMessageUpsertedPayload,
   ThreadUnarchivedPayload,
   ThreadRevertedPayload,
   ThreadSessionSetPayload,
@@ -273,6 +274,7 @@ export function projectEvent(
             deletedAt: null,
             messages: [],
             activities: [],
+            scheduledMessages: [],
             checkpoints: [],
             session: null,
           },
@@ -652,6 +654,37 @@ export function projectEvent(
             ...nextBase,
             threads: updateThread(nextBase.threads, payload.threadId, {
               activities,
+              updatedAt: event.occurredAt,
+            }),
+          };
+        }),
+      );
+
+    case "thread.scheduled-message-upserted":
+      return decodeForEvent(
+        ThreadScheduledMessageUpsertedPayload,
+        event.payload,
+        event.type,
+        "payload",
+      ).pipe(
+        Effect.map((payload) => {
+          const thread = nextBase.threads.find((entry) => entry.id === payload.threadId);
+          if (!thread) {
+            return nextBase;
+          }
+
+          const scheduledMessages = [
+            ...thread.scheduledMessages.filter((entry) => entry.id !== payload.scheduledMessage.id),
+            payload.scheduledMessage,
+          ].toSorted(
+            (left, right) =>
+              left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+          );
+
+          return {
+            ...nextBase,
+            threads: updateThread(nextBase.threads, payload.threadId, {
+              scheduledMessages,
               updatedAt: event.occurredAt,
             }),
           };

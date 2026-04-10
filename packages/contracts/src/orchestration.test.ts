@@ -13,6 +13,7 @@ import {
   ProjectCreatedPayload,
   ProjectMetaUpdatedPayload,
   OrchestrationProposedPlan,
+  ThreadScheduledMessageUpsertedPayload,
   OrchestrationSession,
   ProjectCreateCommand,
   ThreadMetaUpdatedPayload,
@@ -38,6 +39,9 @@ const decodeThreadCreatedPayload = Schema.decodeUnknownEffect(ThreadCreatedPaylo
 const decodeOrchestrationCommand = Schema.decodeUnknownEffect(OrchestrationCommand);
 const decodeOrchestrationEvent = Schema.decodeUnknownEffect(OrchestrationEvent);
 const decodeThreadMetaUpdatedPayload = Schema.decodeUnknownEffect(ThreadMetaUpdatedPayload);
+const decodeThreadScheduledMessageUpsertedPayload = Schema.decodeUnknownEffect(
+  ThreadScheduledMessageUpsertedPayload,
+);
 
 it.effect("parses turn diff input when fromTurnCount <= toTurnCount", () =>
   Effect.gen(function* () {
@@ -448,6 +452,50 @@ it.effect("accepts a source proposed plan reference in thread.turn.start", () =>
       threadId: "thread-1",
       planId: "plan-1",
     });
+  }),
+);
+
+it.effect("defaults scheduled-message delivery mode to queue", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeOrchestrationCommand({
+      type: "thread.scheduled-message.schedule",
+      commandId: "cmd-scheduled-1",
+      threadId: "thread-1",
+      scheduledMessageId: "scheduled-1",
+      content: "Check in tomorrow",
+      scheduledFor: "2026-01-02T00:00:00.000Z",
+      target: {
+        kind: "manager",
+      },
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.strictEqual(parsed.type, "thread.scheduled-message.schedule");
+    if (parsed.type === "thread.scheduled-message.schedule") {
+      assert.strictEqual(parsed.deliveryMode, "queue");
+    }
+  }),
+);
+
+it.effect("decodes scheduled-message upsert payloads with delayed recovery default", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeThreadScheduledMessageUpsertedPayload({
+      threadId: "thread-1",
+      scheduledMessage: {
+        id: "scheduled-1",
+        ownerThreadId: "thread-1",
+        content: "Check in tomorrow",
+        scheduledFor: "2026-01-02T00:00:00.000Z",
+        target: {
+          kind: "manager",
+          managerThreadId: "thread-1",
+        },
+        status: "pending",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    });
+    assert.strictEqual(parsed.scheduledMessage.deliveryMode, "queue");
+    assert.strictEqual(parsed.scheduledMessage.delayedDueToRecovery, false);
   }),
 );
 

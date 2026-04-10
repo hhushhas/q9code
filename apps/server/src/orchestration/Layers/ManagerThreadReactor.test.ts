@@ -196,10 +196,14 @@ describe("ManagerThreadReactor", () => {
 
     await waitFor(async () => {
       const readModel = await Effect.runPromise(harness.engine.getReadModel());
+      const manager = readModel.threads.find(
+        (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+      );
       return (
         readModel.threads.filter(
           (thread) => thread.managerThreadId === ThreadId.makeUnsafe("thread-manager"),
-        ).length === 1
+        ).length === 1 &&
+        manager?.activities.some((activity) => activity.kind === "manager.worker.launched") === true
       );
     });
 
@@ -301,10 +305,14 @@ describe("ManagerThreadReactor", () => {
 
     await waitFor(async () => {
       const readModel = await Effect.runPromise(harness.engine.getReadModel());
+      const manager = readModel.threads.find(
+        (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+      );
       return (
         readModel.threads.filter(
           (thread) => thread.managerThreadId === ThreadId.makeUnsafe("thread-manager"),
-        ).length === 1
+        ).length === 1 &&
+        manager?.activities.some((activity) => activity.kind === "manager.worker.launched") === true
       );
     });
 
@@ -328,6 +336,7 @@ describe("ManagerThreadReactor", () => {
     const launchActivity = manager?.activities.find(
       (activity) => activity.kind === "manager.worker.launched",
     );
+    expect(launchActivity).toBeDefined();
     expect(launchActivity?.payload).toMatchObject({
       workerId: "support-search",
       workerTitle: "Support search",

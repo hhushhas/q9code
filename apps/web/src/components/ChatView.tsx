@@ -102,6 +102,7 @@ import PlanSidebar from "./PlanSidebar";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import {
   BotIcon,
+  CalendarClockIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -175,6 +176,11 @@ import { ComposerPrimaryActions } from "./chat/ComposerPrimaryActions";
 import { ComposerPendingApprovalPanel } from "./chat/ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./chat/ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./chat/ComposerPlanFollowUpBanner";
+import { ScheduleMessageDialog } from "./scheduled-messages";
+import {
+  deriveScheduledMessageTimelineEvents,
+  type ScheduleMessageInput,
+} from "./scheduled-messages/ScheduledMessageTypes";
 import {
   getComposerProviderState,
   renderProviderTraitsMenuContent,
@@ -682,30 +688,56 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const [isDragOverComposer, setIsDragOverComposer] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
   const [consoleCollapsed, setConsoleCollapsed] = useState(false);
-  const [consoleWidth, setConsoleWidth] = useState(384); // 24rem
+  const [consoleWidth, setConsoleWidth] = useState(384);
   const [isResizingConsole, setIsResizingConsole] = useState(false);
+  const consoleResizeRafRef = useRef<number | null>(null);
 
-  const startResizingConsole = useCallback(() => {
+  const onConsoleResizePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     setIsResizingConsole(true);
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
   }, []);
 
   useEffect(() => {
-    if (!isResizingConsole) return;
+    if (!isResizingConsole) {
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      return;
+    }
 
-    const onMouseMove = (e: MouseEvent) => {
-      const newWidth = Math.min(Math.max(280, e.clientX - 64), 600);
-      setConsoleWidth(newWidth);
+    const onPointerMove = (e: PointerEvent) => {
+      if (consoleResizeRafRef.current !== null) {
+        cancelAnimationFrame(consoleResizeRafRef.current);
+      }
+      const leftSidebarWidth = window.innerWidth >= 1024 ? 256 : 0;
+      const newWidth = Math.min(Math.max(240, e.clientX - leftSidebarWidth), 480);
+      consoleResizeRafRef.current = requestAnimationFrame(() => {
+        consoleResizeRafRef.current = null;
+        setConsoleWidth(newWidth);
+      });
     };
 
-    const onMouseUp = () => {
+    const onPointerUp = () => {
+      if (consoleResizeRafRef.current !== null) {
+        cancelAnimationFrame(consoleResizeRafRef.current);
+        consoleResizeRafRef.current = null;
+      }
       setIsResizingConsole(false);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
     };
 
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
     return () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      if (consoleResizeRafRef.current !== null) {
+        cancelAnimationFrame(consoleResizeRafRef.current);
+        consoleResizeRafRef.current = null;
+      }
     };
   }, [isResizingConsole]);
 
@@ -744,6 +776,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
   );
   const [pullRequestDialogState, setPullRequestDialogState] =
     useState<PullRequestDialogState | null>(null);
+  const [isScheduleMessageDialogOpen, setIsScheduleMessageDialogOpen] = useState(false);
+  const [isSchedulingMessage, setIsSchedulingMessage] = useState(false);
   const [terminalLaunchContext, setTerminalLaunchContext] = useState<TerminalLaunchContext | null>(
     null,
   );
@@ -1433,8 +1467,18 @@ export default function ChatView({ threadId }: ChatViewProps) {
   ]);
   const timelineEntries = useMemo(
     () =>
-      deriveTimelineEntries(timelineMessages, activeThread?.proposedPlans ?? [], workLogEntries),
-    [activeThread?.proposedPlans, timelineMessages, workLogEntries],
+      deriveTimelineEntries(
+        timelineMessages,
+        activeThread?.proposedPlans ?? [],
+        workLogEntries,
+        deriveScheduledMessageTimelineEvents(activeThread?.scheduledMessages ?? []),
+      ),
+    [
+      activeThread?.proposedPlans,
+      activeThread?.scheduledMessages,
+      timelineMessages,
+      workLogEntries,
+    ],
   );
   const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
     useTurnDiffSummaries(activeThread);
@@ -4061,11 +4105,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
     }
     return false;
   };
-  const managerThread = useMemo(() => {
-    if (!activeThread?.managerThreadId) return null;
-    return projectThreads.find((t) => t.id === activeThread.managerThreadId);
-  }, [activeThread?.managerThreadId, projectThreads]);
-
   const onSendOutcomeToManager = useCallback(async () => {
     const api = readNativeApi();
     if (!api || !activeThread || !activeThread.managerThreadId) return;
@@ -4175,11 +4214,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         <ChatHeader
           activeThreadId={activeThread.id}
           activeThreadTitle={activeThread.title}
-          activeThreadRoleBadge={
-            isManagerThread ? "Manager" : activeThread.managerThreadId ? "Worker" : null
-          }
           activeProjectName={activeProject?.name}
-          managerThreadTitle={managerThread?.title}
           isGitRepo={isGitRepo}
           openInCwd={gitCwd}
           activeProjectScripts={activeProject?.scripts}
@@ -4216,7 +4251,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
         {isManagerThread && activeProject && (
           <aside
             className={cn(
-              "hidden min-h-0 shrink-0 border-r border-border/70 bg-background/50 transition-[width,margin] duration-300 ease-in-out lg:block overflow-visible relative",
+              "hidden min-h-0 shrink-0 border-r border-border/70 bg-background/50 lg:block overflow-visible relative",
+              isResizingConsole ? "" : "transition-[width,margin] duration-300 ease-in-out",
               consoleCollapsed ? "w-0 border-r-0" : "",
             )}
             style={{ width: consoleCollapsed ? 0 : consoleWidth }}
@@ -4242,9 +4278,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
             {/* Resizer */}
             {!consoleCollapsed && (
               <div
-                onMouseDown={startResizingConsole}
+                onPointerDown={onConsoleResizePointerDown}
                 className={cn(
-                  "absolute top-0 right-0 w-1 h-full cursor-col-resize z-50 transition-colors hover:bg-primary/40",
+                  "absolute top-0 right-0 w-2 h-full cursor-col-resize z-50 transition-colors hover:bg-primary/40 -mr-0.5",
                   isResizingConsole ? "bg-primary/60" : "",
                 )}
               />
@@ -4254,7 +4290,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
             <button
               onClick={() => setConsoleCollapsed(!consoleCollapsed)}
               className={cn(
-                "absolute top-1/2 -translate-y-1/2 translate-x-1.5 size-6 rounded-full border border-border bg-card/80 backdrop-blur-md flex items-center justify-center text-muted-foreground hover:text-primary transition-all z-[60] shadow-sm",
+                "absolute top-1/2 -translate-y-1/2 translate-x-1.5 size-6 rounded-full border border-border bg-card/80 backdrop-blur-md flex items-center justify-center text-muted-foreground hover:text-primary transition-all z-40 shadow-sm",
                 consoleCollapsed ? "left-0 rotate-180" : "right-0",
               )}
             >
@@ -4631,6 +4667,24 @@ export default function ChatView({ threadId }: ChatViewProps) {
                               </>
                             ) : null}
 
+                            {/* Schedule Message Button */}
+                            <Button
+                              variant="ghost"
+                              className="shrink-0 whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:px-3"
+                              size="sm"
+                              type="button"
+                              onClick={() => setIsScheduleMessageDialogOpen(true)}
+                              title="Schedule a message for later"
+                            >
+                              <CalendarClockIcon />
+                              <span className="sr-only sm:not-sr-only">Schedule</span>
+                            </Button>
+
+                            <Separator
+                              orientation="vertical"
+                              className="mx-0.5 hidden h-4 sm:block"
+                            />
+
                             <Button
                               variant="ghost"
                               className="shrink-0 whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:px-3"
@@ -4764,6 +4818,68 @@ export default function ChatView({ threadId }: ChatViewProps) {
               onPrepared={handlePreparedPullRequestThread}
             />
           ) : null}
+
+          {/* Schedule Message Dialog */}
+          <ScheduleMessageDialog
+            open={isScheduleMessageDialogOpen}
+            onOpenChange={setIsScheduleMessageDialogOpen}
+            onSchedule={async (input: ScheduleMessageInput) => {
+              setIsSchedulingMessage(true);
+              try {
+                const api = readNativeApi();
+                if (!api || !activeThread) {
+                  throw new Error("Native API is not available.");
+                }
+
+                await api.orchestration.dispatchCommand({
+                  type: "thread.scheduled-message.schedule",
+                  commandId: newCommandId(),
+                  threadId: activeThread.id,
+                  scheduledMessageId: randomUUID() as never,
+                  content: input.content,
+                  scheduledFor: input.scheduledFor,
+                  target:
+                    input.target.kind === "manager"
+                      ? { kind: "manager" as const }
+                      : { kind: "worker" as const, workerThreadId: input.target.workerId as never },
+                  deliveryMode: input.deliveryMode,
+                  createdAt: new Date().toISOString(),
+                });
+
+                toastManager.add({
+                  type: "success",
+                  title: "Message scheduled",
+                  description: `Will be delivered at ${new Date(input.scheduledFor).toLocaleString()}`,
+                });
+                setIsScheduleMessageDialogOpen(false);
+              } catch (error) {
+                toastManager.add({
+                  type: "error",
+                  title: "Failed to schedule message",
+                  description:
+                    error instanceof Error ? error.message : "An unexpected error occurred.",
+                });
+              } finally {
+                setIsSchedulingMessage(false);
+              }
+            }}
+            workers={
+              activeThread?.role === "manager"
+                ? projectThreads
+                    .filter((t) => t.managerThreadId === activeThread.id)
+                    .map((t) => ({ id: t.id, title: t.title }))
+                : activeThread
+                  ? [{ id: activeThread.id, title: activeThread.title }]
+                  : []
+            }
+            defaultTarget={
+              activeThread && activeThread.role !== "manager"
+                ? { kind: "worker", workerId: activeThread.id, workerTitle: activeThread.title }
+                : { kind: "manager" }
+            }
+            initialContent={prompt.trim()}
+            isSubmitting={isSchedulingMessage}
+          />
         </div>
         {/* end chat column */}
 

@@ -2,6 +2,7 @@ import type {
   OrchestrationCommand,
   OrchestrationEvent,
   OrchestrationReadModel,
+  OrchestrationScheduledMessage,
 } from "@t3tools/contracts";
 import {
   MANAGER_INTERACTION_MODE,
@@ -53,6 +54,109 @@ function withEventBase(
     correlationId: input.commandId,
     metadata: input.metadata ?? {},
   };
+}
+
+function failInvariant(
+  commandType: OrchestrationCommand["type"],
+  detail: string,
+): Effect.Effect<never, OrchestrationCommandInvariantError> {
+  return Effect.fail(
+    new OrchestrationCommandInvariantError({
+      commandType,
+      detail,
+    }),
+  );
+}
+
+function findScheduledMessage(
+  thread: OrchestrationReadModel["threads"][number],
+  scheduledMessageId: OrchestrationScheduledMessage["id"],
+): OrchestrationScheduledMessage | undefined {
+  return thread.scheduledMessages.find((message) => message.id === scheduledMessageId);
+}
+
+function resolveScheduledMessageTarget(input: {
+  readonly readModel: OrchestrationReadModel;
+  readonly ownerThread: OrchestrationReadModel["threads"][number];
+  readonly target:
+    | { readonly kind: "manager" }
+    | {
+        readonly kind: "worker";
+        readonly workerThreadId: OrchestrationScheduledMessage["ownerThreadId"];
+      };
+  readonly commandType: OrchestrationCommand["type"];
+}): Effect.Effect<OrchestrationScheduledMessage["target"], OrchestrationCommandInvariantError> {
+  if (input.target.kind === "manager") {
+    if ((input.ownerThread.role ?? "worker") === "manager") {
+      return Effect.succeed({
+        kind: "manager",
+        managerThreadId: input.ownerThread.id,
+      });
+    }
+
+    if (
+      input.ownerThread.managerThreadId === null ||
+      input.ownerThread.managerThreadId === undefined
+    ) {
+      return failInvariant(
+        input.commandType,
+        `Thread '${input.ownerThread.id}' is not attached to a manager thread.`,
+      );
+    }
+
+    const managerThread = findThreadById(input.readModel, input.ownerThread.managerThreadId);
+    if (!managerThread || managerThread.deletedAt !== null) {
+      return failInvariant(
+        input.commandType,
+        `Manager thread '${input.ownerThread.managerThreadId}' does not exist.`,
+      );
+    }
+    if ((managerThread.role ?? "worker") !== "manager") {
+      return failInvariant(
+        input.commandType,
+        `Thread '${input.ownerThread.managerThreadId}' is not a manager thread.`,
+      );
+    }
+
+    return Effect.succeed({
+      kind: "manager",
+      managerThreadId: managerThread.id,
+    });
+  }
+
+  const workerThread = findThreadById(input.readModel, input.target.workerThreadId);
+  if (!workerThread || workerThread.deletedAt !== null) {
+    return failInvariant(
+      input.commandType,
+      `Worker thread '${input.target.workerThreadId}' does not exist.`,
+    );
+  }
+  if ((workerThread.role ?? "worker") === "manager") {
+    return failInvariant(
+      input.commandType,
+      `Thread '${input.target.workerThreadId}' is not a worker thread.`,
+    );
+  }
+
+  if ((input.ownerThread.role ?? "worker") === "manager") {
+    if (workerThread.managerThreadId !== input.ownerThread.id) {
+      return failInvariant(
+        input.commandType,
+        `Worker '${workerThread.id}' is not delegated by manager '${input.ownerThread.id}'.`,
+      );
+    }
+  } else if (workerThread.id !== input.ownerThread.id) {
+    return failInvariant(
+      input.commandType,
+      `Worker thread '${input.ownerThread.id}' can only schedule follow-ups for itself.`,
+    );
+  }
+
+  return Effect.succeed({
+    kind: "worker",
+    workerThreadId: workerThread.id,
+    workerTitle: workerThread.title,
+  });
 }
 
 export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand")(function* ({
@@ -667,6 +771,149 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       };
     }
 
+    case "thread.scheduled-message.schedule": {
+      const ownerThread = yield* requireThreadNotArchived({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      if (findScheduledMessage(ownerThread, command.scheduledMessageId)) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Scheduled message '${command.scheduledMessageId}' already exists on thread '${command.threadId}'.`,
+        });
+      }
+
+      const target = yield* resolveScheduledMessageTarget({
+        readModel,
+        ownerThread,
+        target: command.target,
+        commandType: command.type,
+      });
+
+      return {
+        ...withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+        }),
+        type: "thread.scheduled-message-upserted",
+        payload: {
+          threadId: command.threadId,
+          scheduledMessage: {
+            id: command.scheduledMessageId,
+            ownerThreadId: command.threadId,
+            content: command.content,
+            scheduledFor: command.scheduledFor,
+            target,
+            deliveryMode: command.deliveryMode,
+            status: "pending",
+            createdAt: command.createdAt,
+            updatedAt: command.createdAt,
+            deliveredAt: null,
+            cancelledAt: null,
+            failedAt: null,
+            failureReason: null,
+            delayedDueToRecovery: false,
+          },
+        },
+      };
+    }
+
+    case "thread.scheduled-message.update": {
+      const ownerThread = yield* requireThreadNotArchived({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      const existing = findScheduledMessage(ownerThread, command.scheduledMessageId);
+      if (!existing) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Scheduled message '${command.scheduledMessageId}' does not exist on thread '${command.threadId}'.`,
+        });
+      }
+      if (existing.status !== "pending") {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Scheduled message '${command.scheduledMessageId}' is already ${existing.status}.`,
+        });
+      }
+
+      const target = yield* resolveScheduledMessageTarget({
+        readModel,
+        ownerThread,
+        target: command.target,
+        commandType: command.type,
+      });
+
+      return {
+        ...withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+        }),
+        type: "thread.scheduled-message-upserted",
+        payload: {
+          threadId: command.threadId,
+          scheduledMessage: {
+            ...existing,
+            content: command.content,
+            scheduledFor: command.scheduledFor,
+            target,
+            deliveryMode: command.deliveryMode,
+            updatedAt: command.createdAt,
+          },
+        },
+      };
+    }
+
+    case "thread.scheduled-message.cancel": {
+      const ownerThread = yield* requireThreadNotArchived({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      const existing = findScheduledMessage(ownerThread, command.scheduledMessageId);
+      if (!existing) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Scheduled message '${command.scheduledMessageId}' does not exist on thread '${command.threadId}'.`,
+        });
+      }
+      if (existing.status !== "pending") {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Scheduled message '${command.scheduledMessageId}' is already ${existing.status}.`,
+        });
+      }
+
+      return {
+        ...withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+        }),
+        type: "thread.scheduled-message-upserted",
+        payload: {
+          threadId: command.threadId,
+          scheduledMessage: {
+            ...existing,
+            status: "cancelled",
+            updatedAt: command.createdAt,
+            deliveredAt: null,
+            cancelledAt: command.createdAt,
+            failedAt: null,
+            failureReason: null,
+            delayedDueToRecovery: false,
+          },
+        },
+      };
+    }
+
     case "thread.session.set": {
       yield* requireThread({
         readModel,
@@ -838,6 +1085,94 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         payload: {
           threadId: command.threadId,
           activity: command.activity,
+        },
+      };
+    }
+
+    case "thread.scheduled-message.mark-delivered": {
+      const ownerThread = yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      const existing = findScheduledMessage(ownerThread, command.scheduledMessageId);
+      if (!existing) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Scheduled message '${command.scheduledMessageId}' does not exist on thread '${command.threadId}'.`,
+        });
+      }
+      if (existing.status !== "pending") {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Scheduled message '${command.scheduledMessageId}' is already ${existing.status}.`,
+        });
+      }
+
+      return {
+        ...withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+        }),
+        type: "thread.scheduled-message-upserted",
+        payload: {
+          threadId: command.threadId,
+          scheduledMessage: {
+            ...existing,
+            status: "delivered",
+            updatedAt: command.deliveredAt,
+            deliveredAt: command.deliveredAt,
+            cancelledAt: null,
+            failedAt: null,
+            failureReason: null,
+            delayedDueToRecovery: command.delayedDueToRecovery,
+          },
+        },
+      };
+    }
+
+    case "thread.scheduled-message.mark-failed": {
+      const ownerThread = yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      const existing = findScheduledMessage(ownerThread, command.scheduledMessageId);
+      if (!existing) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Scheduled message '${command.scheduledMessageId}' does not exist on thread '${command.threadId}'.`,
+        });
+      }
+      if (existing.status !== "pending") {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Scheduled message '${command.scheduledMessageId}' is already ${existing.status}.`,
+        });
+      }
+
+      return {
+        ...withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+        }),
+        type: "thread.scheduled-message-upserted",
+        payload: {
+          threadId: command.threadId,
+          scheduledMessage: {
+            ...existing,
+            status: "failed",
+            updatedAt: command.failedAt,
+            deliveredAt: null,
+            cancelledAt: null,
+            failedAt: command.failedAt,
+            failureReason: command.failureReason,
+            delayedDueToRecovery: false,
+          },
         },
       };
     }

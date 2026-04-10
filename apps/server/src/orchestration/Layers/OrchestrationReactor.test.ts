@@ -6,6 +6,7 @@ import { ManagerThreadReactor } from "../Services/ManagerThreadReactor.ts";
 import { ProviderCommandReactor } from "../Services/ProviderCommandReactor.ts";
 import { ProviderRuntimeIngestionService } from "../Services/ProviderRuntimeIngestion.ts";
 import { OrchestrationReactor } from "../Services/OrchestrationReactor.ts";
+import { ScheduledMessageReactor } from "../Services/ScheduledMessageReactor.ts";
 import { makeOrchestrationReactor } from "./OrchestrationReactor.ts";
 
 describe("OrchestrationReactor", () => {
@@ -58,6 +59,15 @@ describe("OrchestrationReactor", () => {
             },
           }),
         ),
+        Layer.provideMerge(
+          Layer.succeed(ScheduledMessageReactor, {
+            start: () => {
+              started.push("scheduled-message-reactor");
+              return Effect.void;
+            },
+            drain: Effect.void,
+          }),
+        ),
       ),
     );
 
@@ -70,6 +80,7 @@ describe("OrchestrationReactor", () => {
       "provider-command-reactor",
       "checkpoint-reactor",
       "manager-thread-reactor",
+      "scheduled-message-reactor",
     ]);
 
     await Effect.runPromise(Scope.close(scope, Exit.void));

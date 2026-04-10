@@ -11,6 +11,7 @@ import {
   NonNegativeInt,
   ProjectId,
   ProviderItemId,
+  ScheduledMessageId,
   ThreadId,
   TrimmedNonEmptyString,
   TurnId,
@@ -83,6 +84,47 @@ export const ProviderUserInputAnswers = Schema.Record(Schema.String, Schema.Unkn
 export type ProviderUserInputAnswers = typeof ProviderUserInputAnswers.Type;
 export const ManagerWorkerInputMode = Schema.Literals(["queue", "interrupt"]);
 export type ManagerWorkerInputMode = typeof ManagerWorkerInputMode.Type;
+export const ScheduledMessageDeliveryMode = ManagerWorkerInputMode;
+export type ScheduledMessageDeliveryMode = ManagerWorkerInputMode;
+
+export const OrchestrationScheduledMessageTarget = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("manager"),
+    managerThreadId: ThreadId,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("worker"),
+    workerThreadId: ThreadId,
+    workerTitle: TrimmedNonEmptyString,
+  }),
+]);
+export type OrchestrationScheduledMessageTarget = typeof OrchestrationScheduledMessageTarget.Type;
+
+export const OrchestrationScheduledMessageStatus = Schema.Literals([
+  "pending",
+  "delivered",
+  "cancelled",
+  "failed",
+]);
+export type OrchestrationScheduledMessageStatus = typeof OrchestrationScheduledMessageStatus.Type;
+
+export const OrchestrationScheduledMessage = Schema.Struct({
+  id: ScheduledMessageId,
+  ownerThreadId: ThreadId,
+  content: Schema.String,
+  scheduledFor: IsoDateTime,
+  target: OrchestrationScheduledMessageTarget,
+  deliveryMode: ScheduledMessageDeliveryMode.pipe(Schema.withDecodingDefault(() => "queue")),
+  status: OrchestrationScheduledMessageStatus,
+  createdAt: IsoDateTime,
+  updatedAt: IsoDateTime,
+  deliveredAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(() => null)),
+  cancelledAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(() => null)),
+  failedAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(() => null)),
+  failureReason: Schema.NullOr(TrimmedNonEmptyString).pipe(Schema.withDecodingDefault(() => null)),
+  delayedDueToRecovery: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
+});
+export type OrchestrationScheduledMessage = typeof OrchestrationScheduledMessage.Type;
 
 export const PROVIDER_SEND_TURN_MAX_INPUT_CHARS = 120_000;
 export const PROVIDER_SEND_TURN_MAX_ATTACHMENTS = 8;
@@ -300,6 +342,9 @@ export const OrchestrationThread = Schema.Struct({
   messages: Schema.Array(OrchestrationMessage),
   proposedPlans: Schema.Array(OrchestrationProposedPlan).pipe(Schema.withDecodingDefault(() => [])),
   activities: Schema.Array(OrchestrationThreadActivity),
+  scheduledMessages: Schema.Array(OrchestrationScheduledMessage).pipe(
+    Schema.withDecodingDefault(() => []),
+  ),
   checkpoints: Schema.Array(OrchestrationCheckpointSummary),
   session: Schema.NullOr(OrchestrationSession),
 });
@@ -525,6 +570,48 @@ const ManagerWorkerInputSendCommand = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+const ScheduledMessageCommandTarget = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("manager"),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("worker"),
+    workerThreadId: ThreadId,
+  }),
+]);
+
+const ThreadScheduledMessageScheduleCommand = Schema.Struct({
+  type: Schema.Literal("thread.scheduled-message.schedule"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  scheduledMessageId: ScheduledMessageId,
+  content: Schema.String,
+  scheduledFor: IsoDateTime,
+  target: ScheduledMessageCommandTarget,
+  deliveryMode: ScheduledMessageDeliveryMode.pipe(Schema.withDecodingDefault(() => "queue")),
+  createdAt: IsoDateTime,
+});
+
+const ThreadScheduledMessageUpdateCommand = Schema.Struct({
+  type: Schema.Literal("thread.scheduled-message.update"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  scheduledMessageId: ScheduledMessageId,
+  content: Schema.String,
+  scheduledFor: IsoDateTime,
+  target: ScheduledMessageCommandTarget,
+  deliveryMode: ScheduledMessageDeliveryMode.pipe(Schema.withDecodingDefault(() => "queue")),
+  createdAt: IsoDateTime,
+});
+
+const ThreadScheduledMessageCancelCommand = Schema.Struct({
+  type: Schema.Literal("thread.scheduled-message.cancel"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  scheduledMessageId: ScheduledMessageId,
+  createdAt: IsoDateTime,
+});
+
 const DispatchableClientOrchestrationCommand = Schema.Union([
   ProjectCreateCommand,
   ProjectMetaUpdateCommand,
@@ -543,6 +630,9 @@ const DispatchableClientOrchestrationCommand = Schema.Union([
   ThreadCheckpointRevertCommand,
   ThreadSessionStopCommand,
   ManagerWorkerInputSendCommand,
+  ThreadScheduledMessageScheduleCommand,
+  ThreadScheduledMessageUpdateCommand,
+  ThreadScheduledMessageCancelCommand,
 ]);
 export type DispatchableClientOrchestrationCommand =
   typeof DispatchableClientOrchestrationCommand.Type;
@@ -565,8 +655,31 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadCheckpointRevertCommand,
   ThreadSessionStopCommand,
   ManagerWorkerInputSendCommand,
+  ThreadScheduledMessageScheduleCommand,
+  ThreadScheduledMessageUpdateCommand,
+  ThreadScheduledMessageCancelCommand,
 ]);
 export type ClientOrchestrationCommand = typeof ClientOrchestrationCommand.Type;
+
+const ThreadScheduledMessageMarkDeliveredCommand = Schema.Struct({
+  type: Schema.Literal("thread.scheduled-message.mark-delivered"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  scheduledMessageId: ScheduledMessageId,
+  deliveredAt: IsoDateTime,
+  delayedDueToRecovery: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
+  createdAt: IsoDateTime,
+});
+
+const ThreadScheduledMessageMarkFailedCommand = Schema.Struct({
+  type: Schema.Literal("thread.scheduled-message.mark-failed"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  scheduledMessageId: ScheduledMessageId,
+  failureReason: TrimmedNonEmptyString,
+  failedAt: IsoDateTime,
+  createdAt: IsoDateTime,
+});
 
 const ThreadSessionSetCommand = Schema.Struct({
   type: Schema.Literal("thread.session.set"),
@@ -641,6 +754,8 @@ const InternalOrchestrationCommand = Schema.Union([
   ThreadTurnDiffCompleteCommand,
   ThreadActivityAppendCommand,
   ThreadRevertCompleteCommand,
+  ThreadScheduledMessageMarkDeliveredCommand,
+  ThreadScheduledMessageMarkFailedCommand,
 ]);
 export type InternalOrchestrationCommand = typeof InternalOrchestrationCommand.Type;
 
@@ -670,6 +785,7 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.reverted",
   "thread.session-stop-requested",
   "manager.worker-input-requested",
+  "thread.scheduled-message-upserted",
   "thread.session-set",
   "thread.proposed-plan-upserted",
   "thread.turn-diff-completed",
@@ -843,6 +959,11 @@ export const ManagerWorkerInputRequestedPayload = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+export const ThreadScheduledMessageUpsertedPayload = Schema.Struct({
+  threadId: ThreadId,
+  scheduledMessage: OrchestrationScheduledMessage,
+});
+
 export const ThreadProposedPlanUpsertedPayload = Schema.Struct({
   threadId: ThreadId,
   proposedPlan: OrchestrationProposedPlan,
@@ -980,6 +1101,11 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("manager.worker-input-requested"),
     payload: ManagerWorkerInputRequestedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.scheduled-message-upserted"),
+    payload: ThreadScheduledMessageUpsertedPayload,
   }),
   Schema.Struct({
     ...EventBaseFields,

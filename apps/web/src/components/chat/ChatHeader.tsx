@@ -17,9 +17,7 @@ import { OpenInPicker } from "./OpenInPicker";
 interface ChatHeaderProps {
   activeThreadId: ThreadId;
   activeThreadTitle: string;
-  activeThreadRoleBadge?: string | null;
   activeProjectName: string | undefined;
-  managerThreadTitle?: string | null | undefined;
   isGitRepo: boolean;
   openInCwd: string | null;
   activeProjectScripts: ProjectScript[] | undefined;
@@ -43,9 +41,7 @@ interface ChatHeaderProps {
 export const ChatHeader = memo(function ChatHeader({
   activeThreadId,
   activeThreadTitle,
-  activeThreadRoleBadge,
   activeProjectName,
-  managerThreadTitle,
   isGitRepo,
   openInCwd,
   activeProjectScripts,
@@ -77,32 +73,12 @@ export const ChatHeader = memo(function ChatHeader({
             >
               {activeProjectName}
             </h2>
-            {activeThreadRoleBadge === "Manager" ? (
-              <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-muted px-2 py-0.5">
-                <span className="status-dot status-dot-active" />
-              </div>
-            ) : activeThreadRoleBadge === "Worker" ? (
-              <div className="flex min-w-0 items-center gap-1.5">
-                <span className="text-muted-foreground">/</span>
-                <span className="truncate font-mono label-tiny font-medium text-muted-foreground">
-                  {managerThreadTitle ?? "Manager"}
-                </span>
-                <span className="text-muted-foreground font-bold">→</span>
-                <Badge
-                  variant="outline"
-                  className="shrink-0 truncate border-border/60 font-mono label-tiny font-bold text-foreground"
-                >
-                  {activeThreadTitle}
-                </Badge>
-              </div>
-            ) : (
-              <Badge
-                variant="outline"
-                className="shrink-0 truncate font-mono label-tiny text-muted-foreground/80"
-              >
-                {activeThreadTitle}
-              </Badge>
-            )}
+            <Badge
+              variant="outline"
+              className="shrink-0 truncate font-mono label-tiny text-muted-foreground/80"
+            >
+              {activeThreadTitle}
+            </Badge>
           </div>
         ) : (
           <h2

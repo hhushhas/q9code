@@ -20,6 +20,7 @@ import type {
   ThreadSession,
   TurnDiffSummary,
 } from "./types";
+import type { ScheduledMessageTimelineEvent } from "./components/scheduled-messages/ScheduledMessageTypes";
 
 export type ProviderPickerKind = ProviderKind | "cursor";
 
@@ -114,6 +115,12 @@ export type TimelineEntry =
       kind: "work";
       createdAt: string;
       entry: WorkLogEntry;
+    }
+  | {
+      id: string;
+      kind: "scheduled-message-event";
+      createdAt: string;
+      event: ScheduledMessageTimelineEvent;
     };
 
 export function formatDuration(durationMs: number): string {
@@ -875,6 +882,7 @@ export function deriveTimelineEntries(
   messages: ChatMessage[],
   proposedPlans: ProposedPlan[],
   workEntries: WorkLogEntry[],
+  scheduledEvents: ScheduledMessageTimelineEvent[],
 ): TimelineEntry[] {
   const messageRows: TimelineEntry[] = messages.map((message) => ({
     id: message.id,
@@ -894,8 +902,17 @@ export function deriveTimelineEntries(
     createdAt: entry.createdAt,
     entry,
   }));
-  return [...messageRows, ...proposedPlanRows, ...workRows].toSorted((a, b) =>
-    a.createdAt.localeCompare(b.createdAt),
+  const scheduledMessageRows: TimelineEntry[] = scheduledEvents.map((event, index) => ({
+    id: `${event.kind}:${event.message.id}:${index}`,
+    kind: "scheduled-message-event",
+    createdAt:
+      event.kind === "scheduled-message-created"
+        ? event.message.createdAt
+        : (event.message.deliveredAt ?? event.message.createdAt),
+    event,
+  }));
+  return [...messageRows, ...proposedPlanRows, ...workRows, ...scheduledMessageRows].toSorted(
+    (a, b) => a.createdAt.localeCompare(b.createdAt),
   );
 }
 

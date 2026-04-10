@@ -133,6 +133,7 @@ describe("OrchestrationEngine", () => {
           proposedPlans: [],
           activities: [],
           checkpoints: [],
+          scheduledMessages: [],
           session: null,
         },
       ],

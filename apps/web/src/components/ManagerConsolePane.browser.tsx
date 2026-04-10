@@ -148,6 +148,7 @@ const managerThread: Thread = {
       createdAt: "2026-04-09T08:01:00.000Z",
     },
   ],
+  scheduledMessages: [],
 };
 
 const workerThread: Thread = {
@@ -191,6 +192,7 @@ const workerThread: Thread = {
   worktreePath: "/repo/project",
   turnDiffSummaries: [],
   activities: [],
+  scheduledMessages: [],
 };
 
 afterEach(() => {

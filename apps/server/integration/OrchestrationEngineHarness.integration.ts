@@ -53,6 +53,7 @@ import { OrchestrationReactorLive } from "../src/orchestration/Layers/Orchestrat
 import { ManagerThreadReactorLive } from "../src/orchestration/Layers/ManagerThreadReactor.ts";
 import { ProviderCommandReactorLive } from "../src/orchestration/Layers/ProviderCommandReactor.ts";
 import { ProviderRuntimeIngestionLive } from "../src/orchestration/Layers/ProviderRuntimeIngestion.ts";
+import { ScheduledMessageReactorLive } from "../src/orchestration/Layers/ScheduledMessageReactor.ts";
 import {
   OrchestrationEngineService,
   type OrchestrationEngineShape,
@@ -335,6 +336,9 @@ export const makeOrchestrationIntegrationHarness = (
       Layer.provideMerge(providerCommandReactorLayer),
       Layer.provideMerge(checkpointReactorLayer),
       Layer.provideMerge(ManagerThreadReactorLive.pipe(Layer.provideMerge(runtimeServicesLayer))),
+      Layer.provideMerge(
+        ScheduledMessageReactorLive.pipe(Layer.provideMerge(runtimeServicesLayer)),
+      ),
     );
     const layer = Layer.mergeAll(runtimeServicesLayer, orchestrationReactorLayer).pipe(
       Layer.provideMerge(persistenceLayer),

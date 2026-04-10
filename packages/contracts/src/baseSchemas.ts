@@ -25,6 +25,8 @@ export const EventId = makeEntityId("EventId");
 export type EventId = typeof EventId.Type;
 export const MessageId = makeEntityId("MessageId");
 export type MessageId = typeof MessageId.Type;
+export const ScheduledMessageId = makeEntityId("ScheduledMessageId");
+export type ScheduledMessageId = typeof ScheduledMessageId.Type;
 export const TurnId = makeEntityId("TurnId");
 export type TurnId = typeof TurnId.Type;
 

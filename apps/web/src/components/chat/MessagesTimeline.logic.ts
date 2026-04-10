@@ -1,8 +1,8 @@
 import { type MessageId } from "@t3tools/contracts";
 import { type TimelineEntry, type WorkLogEntry } from "../../session-logic";
-import { buildTurnDiffTree, type TurnDiffTreeNode } from "../../lib/turnDiffTree";
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
 import { estimateTimelineMessageHeight } from "../timelineHeight";
+import type { ScheduledMessageTimelineEvent } from "../scheduled-messages/ScheduledMessageTypes";
 
 export const MAX_VISIBLE_WORK_LOG_ENTRIES = 6;
 
@@ -34,7 +34,13 @@ export type MessagesTimelineRow =
       createdAt: string;
       proposedPlan: ProposedPlan;
     }
-  | { kind: "working"; id: string; createdAt: string | null };
+  | { kind: "working"; id: string; createdAt: string | null }
+  | {
+      kind: "scheduled-message-event";
+      id: string;
+      createdAt: string;
+      event: ScheduledMessageTimelineEvent;
+    };
 
 export function computeMessageDurationStart(
   messages: ReadonlyArray<TimelineDurationMessage>,
@@ -105,6 +111,16 @@ export function deriveMessagesTimelineRows(input: {
       continue;
     }
 
+    if (timelineEntry.kind === "scheduled-message-event") {
+      nextRows.push({
+        kind: "scheduled-message-event",
+        id: timelineEntry.id,
+        createdAt: timelineEntry.createdAt,
+        event: timelineEntry.event,
+      });
+      continue;
+    }
+
     nextRows.push({
       kind: "message",
       id: timelineEntry.id,
@@ -144,6 +160,8 @@ export function estimateMessagesTimelineRowHeight(
       return estimateTimelineProposedPlanHeight(row.proposedPlan);
     case "working":
       return 40;
+    case "scheduled-message-event":
+      return 80;
     case "message": {
       let estimate = estimateTimelineMessageHeight(row.message, {
         timelineWidthPx: input.timelineWidthPx,
@@ -180,20 +198,6 @@ function estimateTimelineProposedPlanHeight(proposedPlan: ProposedPlan): number 
 }
 
 function estimateChangedFilesCardHeight(turnDiffSummary: TurnDiffSummary): number {
-  const treeNodes = buildTurnDiffTree(turnDiffSummary.files);
-  const visibleNodeCount = countTurnDiffTreeNodes(treeNodes);
-
-  // Card chrome: top/bottom padding, header row, and tree spacing.
-  return 60 + visibleNodeCount * 25;
-}
-
-function countTurnDiffTreeNodes(nodes: ReadonlyArray<TurnDiffTreeNode>): number {
-  let count = 0;
-  for (const node of nodes) {
-    count += 1;
-    if (node.kind === "directory") {
-      count += countTurnDiffTreeNodes(node.children);
-    }
-  }
-  return count;
+  const fileCount = turnDiffSummary.files.length;
+  return 36 + fileCount * 26;
 }

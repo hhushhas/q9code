@@ -38,9 +38,10 @@ import { Button } from "../ui/button";
 import { clamp } from "effect/Number";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ProposedPlanCard } from "./ProposedPlanCard";
-import { ChangedFilesTree } from "./ChangedFilesTree";
+
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
+import { VscodeEntryIcon } from "./VscodeEntryIcon";
 import {
   MAX_VISIBLE_WORK_LOG_ENTRIES,
   deriveMessagesTimelineRows,
@@ -48,6 +49,7 @@ import {
   normalizeCompactToolLabel,
   type MessagesTimelineRow,
 } from "./MessagesTimeline.logic";
+import { ScheduledMessageTimelineCard } from "../scheduled-messages/ScheduledMessageTimelineCard";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import {
   deriveDisplayedUserMessageState,
@@ -294,15 +296,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
   const virtualRows = rowVirtualizer.getVirtualItems();
   const nonVirtualizedRows = rows.slice(virtualizedRowCount);
-  const [allDirectoriesExpandedByTurnId, setAllDirectoriesExpandedByTurnId] = useState<
-    Record<string, boolean>
-  >({});
-  const onToggleAllDirectories = useCallback((turnId: TurnId) => {
-    setAllDirectoriesExpandedByTurnId((current) => ({
-      ...current,
-      [turnId]: !(current[turnId] ?? true),
-    }));
-  }, []);
 
   const renderRowContent = (row: TimelineRow) => (
     <div
@@ -461,7 +454,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   <span className="h-px flex-1 bg-border" />
                 </div>
               )}
-              <div className="min-w-0 px-1 py-0.5">
+              <div className="group/msg min-w-0 px-1 py-0.5">
                 <ChatMarkdown
                   text={messageText}
                   cwd={markdownCwd}
@@ -474,65 +467,85 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   if (checkpointFiles.length === 0) return null;
                   const summaryStat = summarizeTurnDiffStats(checkpointFiles);
                   const changedFileCountLabel = String(checkpointFiles.length);
-                  const allDirectoriesExpanded =
-                    allDirectoriesExpandedByTurnId[turnSummary.turnId] ?? true;
                   return (
                     <div className="mt-2 rounded-lg border border-border/80 bg-card/45 p-2.5">
-                      <div className="mb-1.5 flex items-center justify-between gap-2">
-                        <p className="label-tiny text-muted-foreground/65">
-                          <span>Changed files ({changedFileCountLabel})</span>
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <span className="label-tiny text-muted-foreground/65">
+                            Changed files ({changedFileCountLabel})
+                          </span>
                           {hasNonZeroStat(summaryStat) && (
-                            <>
-                              <span className="mx-1">•</span>
+                            <span className="shrink-0 font-mono text-[10px] tabular-nums">
                               <DiffStatLabel
                                 additions={summaryStat.additions}
                                 deletions={summaryStat.deletions}
                               />
-                            </>
+                            </span>
                           )}
-                        </p>
-                        <div className="flex items-center gap-1.5">
-                          <Button
-                            type="button"
-                            size="xs"
-                            variant="outline"
-                            data-scroll-anchor-ignore
-                            onClick={() => onToggleAllDirectories(turnSummary.turnId)}
-                          >
-                            {allDirectoriesExpanded ? "Collapse all" : "Expand all"}
-                          </Button>
-                          <Button
-                            type="button"
-                            size="xs"
-                            variant="outline"
-                            onClick={() =>
-                              onOpenTurnDiff(turnSummary.turnId, checkpointFiles[0]?.path)
-                            }
-                          >
-                            View diff
-                          </Button>
                         </div>
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="outline"
+                          onClick={() =>
+                            onOpenTurnDiff(turnSummary.turnId, checkpointFiles[0]?.path)
+                          }
+                        >
+                          View diff
+                        </Button>
                       </div>
-                      <ChangedFilesTree
-                        key={`changed-files-tree:${turnSummary.turnId}`}
-                        turnId={turnSummary.turnId}
-                        files={checkpointFiles}
-                        allDirectoriesExpanded={allDirectoriesExpanded}
-                        resolvedTheme={resolvedTheme}
-                        onOpenTurnDiff={onOpenTurnDiff}
-                      />
+                      <div className="space-y-0.5">
+                        {checkpointFiles.map((file) => {
+                          const fileStat =
+                            typeof file.additions === "number" && typeof file.deletions === "number"
+                              ? { additions: file.additions, deletions: file.deletions }
+                              : null;
+                          return (
+                            <button
+                              key={file.path}
+                              type="button"
+                              className="group flex w-full items-center gap-1.5 rounded-md py-0.5 pr-2 text-left hover:bg-background/80"
+                              style={{ paddingLeft: "8px" }}
+                              onClick={() => onOpenTurnDiff(turnSummary.turnId, file.path)}
+                            >
+                              <VscodeEntryIcon
+                                pathValue={file.path}
+                                kind="file"
+                                theme={resolvedTheme}
+                                className="size-3.5 shrink-0 text-muted-foreground/70"
+                              />
+                              <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground/80 group-hover:text-foreground/90">
+                                {file.path}
+                              </span>
+                              {fileStat && (
+                                <span className="ml-auto shrink-0 font-mono text-[10px] tabular-nums">
+                                  <DiffStatLabel
+                                    additions={fileStat.additions}
+                                    deletions={fileStat.deletions}
+                                  />
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   );
                 })()}
-                <p className="mt-1.5 label-tiny text-muted-foreground/30">
-                  {formatMessageMeta(
-                    row.message.createdAt,
-                    row.message.streaming
-                      ? formatElapsed(row.durationStart, nowIso)
-                      : formatElapsed(row.durationStart, row.message.completedAt),
-                    timestampFormat,
-                  )}
-                </p>
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <div className="flex items-center gap-1 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover/msg:opacity-100">
+                    {row.message.text && <MessageCopyButton text={row.message.text} />}
+                  </div>
+                  <p className="label-tiny text-muted-foreground/30">
+                    {formatMessageMeta(
+                      row.message.createdAt,
+                      row.message.streaming
+                        ? formatElapsed(row.durationStart, nowIso)
+                        : formatElapsed(row.durationStart, row.message.completedAt),
+                      timestampFormat,
+                    )}
+                  </p>
+                </div>
               </div>
             </>
           );
@@ -562,6 +575,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 : "Working..."}
             </span>
           </div>
+        </div>
+      )}
+
+      {row.kind === "scheduled-message-event" && (
+        <div className="px-1 py-0.5">
+          <ScheduledMessageTimelineCard event={row.event} />
         </div>
       )}
     </div>

@@ -953,6 +953,7 @@ describe("deriveTimelineEntries", () => {
           tone: "tool",
         },
       ],
+      [],
     );
 
     expect(entries.map((entry) => entry.kind)).toEqual(["message", "proposed-plan", "work"]);
@@ -984,6 +985,7 @@ describe("deriveTimelineEntries", () => {
           streaming: false,
         },
       ],
+      [],
       [],
       [],
     );

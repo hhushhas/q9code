@@ -180,6 +180,7 @@ function mapThread(thread: OrchestrationThread): Thread {
     worktreePath: thread.worktreePath,
     turnDiffSummaries: thread.checkpoints.map(mapTurnDiffSummary),
     activities: thread.activities.map((activity) => ({ ...activity })),
+    scheduledMessages: thread.scheduledMessages.map((message) => ({ ...message })),
   };
 }
 
@@ -673,6 +674,7 @@ export function applyOrchestrationEvent(state: AppState, event: OrchestrationEve
         proposedPlans: [],
         activities: [],
         checkpoints: [],
+        scheduledMessages: [],
         session: null,
       });
       const threads = existing

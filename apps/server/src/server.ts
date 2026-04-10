@@ -41,6 +41,7 @@ import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRun
 import { ProviderCommandReactorLive } from "./orchestration/Layers/ProviderCommandReactor";
 import { CheckpointReactorLive } from "./orchestration/Layers/CheckpointReactor";
 import { ManagerThreadReactorLive } from "./orchestration/Layers/ManagerThreadReactor";
+import { ScheduledMessageReactorLive } from "./orchestration/Layers/ScheduledMessageReactor";
 import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry";
 import { ServerSettingsLive } from "./serverSettings";
 import { ProjectFaviconResolverLive } from "./project/Layers/ProjectFaviconResolver";
@@ -104,6 +105,7 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(ProviderCommandReactorLive),
   Layer.provideMerge(CheckpointReactorLive),
   Layer.provideMerge(ManagerThreadReactorLive),
+  Layer.provideMerge(ScheduledMessageReactorLive),
   Layer.provideMerge(RuntimeReceiptBusLive),
 );
 

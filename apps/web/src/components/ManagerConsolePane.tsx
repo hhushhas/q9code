@@ -15,7 +15,6 @@ import {
   normalizeCodexModelOptionsWithCapabilities,
 } from "@t3tools/shared/model";
 import {
-  ActivityIcon,
   FileTextIcon,
   FolderOpenIcon,
   MessageSquareIcon,
@@ -28,7 +27,6 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { newCommandId, newMessageId, newThreadId } from "~/lib/utils";
 import { readNativeApi } from "~/nativeApi";
 import { type Project, type Thread } from "../types";
-import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -198,12 +196,6 @@ export function ManagerConsolePane({
   const selectedWorker = useMemo(
     () => workerThreads.find((thread) => thread.id === selectedWorkerId) ?? null,
     [selectedWorkerId, workerThreads],
-  );
-  const selectedWorkerModelPreset = useMemo(
-    () =>
-      MANAGER_WORKER_MODEL_PRESETS.find((preset) => preset.model === workerModel) ??
-      MANAGER_WORKER_MODEL_PRESETS[0],
-    [workerModel],
   );
   const workerLaunchModelSelection = useMemo(() => {
     const normalizedOptions = normalizeCodexModelOptionsWithCapabilities(
@@ -478,39 +470,38 @@ export function ManagerConsolePane({
     <div className="flex h-full flex-col font-mono">
       <div className="flex-1 space-y-6 overflow-y-auto px-1 py-1 pr-3">
         {/* Swarm Snapshot */}
-        <section className="space-y-3">
+        <section className="space-y-2">
           <div className="flex items-center justify-between">
-            <h3 className="label-micro text-muted-foreground/80">Project Swarm</h3>
-            <Badge
-              variant="outline"
-              className="label-tiny border-border/60 bg-muted font-mono text-muted-foreground"
-            >
-              {workerStats.total} WORKERS
-            </Badge>
+            <h3 className="text-xs font-medium text-muted-foreground/60">Swarm</h3>
+            <span className="text-[10px] text-muted-foreground/50">
+              {workerStats.total} workers
+            </span>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="rounded-xl border border-border/60 bg-card p-3">
-              <div className="label-tiny text-muted-foreground">Active</div>
-              <div className="mt-1 font-display text-xl font-semibold text-foreground">
+          <div className="grid grid-cols-2 gap-1.5">
+            <div className="rounded-lg border border-border/60 bg-card p-2">
+              <div className="text-[10px] text-muted-foreground/70">Active</div>
+              <div className="text-lg font-semibold text-foreground leading-tight">
                 {workerStats.running}
               </div>
             </div>
             <div
-              className={`rounded-xl border p-3 ${
+              className={`rounded-lg border p-2 ${
                 workerStats.blocked > 0
                   ? "border-warning/40 bg-warning/10"
                   : "border-border/60 bg-card"
               }`}
             >
               <div
-                className={`label-tiny ${
-                  workerStats.blocked > 0 ? "text-warning-foreground" : "text-muted-foreground"
+                className={`text-[10px] ${
+                  workerStats.blocked > 0
+                    ? "text-warning-foreground/80"
+                    : "text-muted-foreground/70"
                 }`}
               >
                 Blocked
               </div>
               <div
-                className={`mt-1 font-display text-xl font-semibold ${
+                className={`text-lg font-semibold leading-tight ${
                   workerStats.blocked > 0 ? "text-warning-foreground" : "text-foreground"
                 }`}
               >
@@ -521,29 +512,19 @@ export function ManagerConsolePane({
         </section>
 
         {/* Sacred Memory */}
-        <section className="space-y-3">
-          <h3 className="label-micro text-muted-foreground/80">Sacred Memory</h3>
-          <div className="space-y-2">
+        <section className="space-y-2">
+          <h3 className="text-xs font-medium text-muted-foreground/60">Memory</h3>
+          <div className="space-y-1">
             <button
               type="button"
               disabled={!managerThread.managerScratchpad?.sessionLogPath}
               onClick={() =>
                 openPath(managerThread.managerScratchpad?.sessionLogPath, "Manager log")
               }
-              className="group flex w-full items-center justify-between rounded-xl border border-border/60 bg-card p-2.5 text-left transition-colors hover:bg-accent/50"
+              className="group flex w-full items-center gap-2 rounded-lg border border-border/60 bg-card px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
             >
-              <div className="flex items-center gap-3">
-                <div className="flex size-8 items-center justify-center rounded-lg border border-border/60 bg-secondary text-secondary-foreground">
-                  <FileTextIcon className="size-3.5" />
-                </div>
-                <div className="min-w-0 text-left">
-                  <div className="truncate text-sm font-medium text-foreground">session-log.md</div>
-                  <div className="label-tiny text-muted-foreground">Durable Audit</div>
-                </div>
-              </div>
-              <span className="label-micro text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
-                OPEN
-              </span>
+              <FileTextIcon className="size-3.5 text-muted-foreground/60" />
+              <div className="min-w-0 flex-1 truncate text-xs text-foreground">session-log.md</div>
             </button>
             <button
               type="button"
@@ -551,27 +532,17 @@ export function ManagerConsolePane({
               onClick={() =>
                 openPath(managerThread.managerScratchpad?.folderPath, "Manager folder")
               }
-              className="group flex w-full items-center justify-between rounded-xl border border-border/60 bg-card p-2.5 text-left transition-colors hover:bg-accent/50"
+              className="group flex w-full items-center gap-2 rounded-lg border border-border/60 bg-card px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
             >
-              <div className="flex items-center gap-3">
-                <div className="flex size-8 items-center justify-center rounded-lg border border-border/60 bg-secondary text-secondary-foreground">
-                  <FolderOpenIcon className="size-3.5" />
-                </div>
-                <div className="min-w-0 text-left">
-                  <div className="truncate text-sm font-medium text-foreground">scratchpad/</div>
-                  <div className="label-tiny text-muted-foreground">Shared Memory</div>
-                </div>
-              </div>
-              <span className="label-micro text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
-                OPEN
-              </span>
+              <FolderOpenIcon className="size-3.5 text-muted-foreground/60" />
+              <div className="min-w-0 flex-1 truncate text-xs text-foreground">scratchpad/</div>
             </button>
           </div>
         </section>
 
         <section className="space-y-2">
           <div className="flex items-center justify-between">
-            <h3 className="label-micro text-muted-foreground/80">Checklist</h3>
+            <h3 className="text-xs font-medium text-muted-foreground/60">Checklist</h3>
             <button
               type="button"
               onClick={() => void loadManagerChecklist()}
@@ -579,7 +550,6 @@ export function ManagerConsolePane({
               className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-foreground transition-colors"
             >
               <RefreshCwIcon className={`size-3 ${checklistLoading ? "animate-spin" : ""}`} />
-              Refresh
             </button>
           </div>
           <div className="space-y-1.5">
@@ -628,7 +598,17 @@ export function ManagerConsolePane({
 
         {/* Workers */}
         <section className="space-y-2">
-          <h3 className="label-micro text-muted-foreground/80">Workers</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-medium text-muted-foreground/60">Workers</h3>
+            <button
+              type="button"
+              onClick={() => setDelegateDialogOpen(true)}
+              className="inline-flex items-center text-muted-foreground/50 hover:text-foreground transition-colors"
+              title="Add worker"
+            >
+              <PlusIcon className="size-3.5" />
+            </button>
+          </div>
           <div className="space-y-1">
             {workerThreads.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border/60 bg-muted px-2 py-2 text-center text-[11px] text-muted-foreground">
@@ -712,42 +692,11 @@ export function ManagerConsolePane({
             )}
           </div>
         </section>
-
-        <button
-          type="button"
-          onClick={() => setDelegateDialogOpen(true)}
-          className="group flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border/60 bg-muted py-2.5 label-micro text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
-        >
-          <PlusIcon className="size-3.5" />
-          Delegate Worker
-        </button>
-      </div>
-
-      <div className="mt-auto border-t border-border/40 p-2 pt-4">
-        <div className="flex gap-2">
-          <Button
-            size="xs"
-            variant="outline"
-            className="flex-1 font-mono label-tiny text-muted-foreground/80"
-            onClick={() => setRenameDialogOpen(true)}
-          >
-            <PencilIcon className="size-3 -mt-px" />
-            Rename
-          </Button>
-          <Button
-            size="xs"
-            variant="outline"
-            className="flex-1 font-mono label-tiny text-muted-foreground/80"
-          >
-            <ActivityIcon className="size-3 -mt-px" />
-            Reconcile
-          </Button>
-        </div>
       </div>
 
       <Dialog open={delegateDialogOpen} onOpenChange={setDelegateDialogOpen}>
-        <DialogPopup className="max-w-xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
+        <DialogPopup className="max-w-xl max-h-[85vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <div className="flex items-center gap-2.5">
               <div className="flex size-8 items-center justify-center rounded-lg border border-border/60 bg-secondary text-foreground">
                 <PlusIcon className="size-4" />
@@ -756,68 +705,56 @@ export function ManagerConsolePane({
                 <DialogTitle className="font-display text-lg font-medium">
                   Delegate Worker
                 </DialogTitle>
-                <DialogDescription className="font-mono label-tiny text-muted-foreground/70">
+                <DialogDescription className="text-xs text-muted-foreground/70">
                   Launch bounded execution
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
-          <form onSubmit={launchDelegatedWorker}>
-            <DialogPanel className="space-y-6 py-6 font-mono overflow-y-auto max-h-[60vh] sm:max-h-[50vh]">
-              <Field className="space-y-2">
-                <FieldLabel className="label-tiny text-muted-foreground">
-                  Worker Identity
-                </FieldLabel>
+          <form onSubmit={launchDelegatedWorker} className="flex flex-col flex-1 min-h-0">
+            <DialogPanel className="flex-1 overflow-y-auto py-4 space-y-4">
+              <Field className="space-y-1.5">
+                <FieldLabel className="text-xs text-muted-foreground">Worker identity</FieldLabel>
                 <Input
                   value={workerTitle}
                   onChange={(event) => setWorkerTitle(event.target.value)}
                   placeholder="e.g., auth-reconnect-fix"
-                  className="border-border/40 bg-card/50 font-mono text-sm focus:border-primary/40 focus:ring-primary/10"
+                  className="border-border/40 bg-card/50 text-sm h-9"
                 />
-                <FieldDescription className="label-tiny text-muted-foreground/50">
-                  Short, operational slug for the swarm list.
+                <FieldDescription className="text-[11px] text-muted-foreground/50">
+                  Short slug for the swarm list
                 </FieldDescription>
               </Field>
-              <Field className="space-y-3">
-                <FieldLabel className="label-tiny text-muted-foreground">Worker Model</FieldLabel>
-                <div className="grid gap-2">
+              <Field className="space-y-2">
+                <FieldLabel className="text-xs text-muted-foreground">Worker model</FieldLabel>
+                <div className="grid grid-cols-3 gap-1.5">
                   {MANAGER_WORKER_MODEL_PRESETS.map((preset) => (
                     <button
                       key={preset.model}
                       type="button"
                       onClick={() => setWorkerModel(preset.model)}
-                      className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                      className={`rounded-lg border px-2 py-2 text-left transition-colors ${
                         workerModel === preset.model
                           ? "border-border bg-accent text-accent-foreground"
                           : "border-border/60 bg-card text-foreground hover:bg-accent/40"
                       }`}
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="text-sm font-medium">{preset.label}</div>
+                      <div className="flex items-center justify-between gap-1">
+                        <div className="text-xs font-medium truncate">{preset.label}</div>
                         {preset.isDefault ? (
-                          <Badge variant="outline" className="label-tiny font-mono">
-                            Default
-                          </Badge>
+                          <span className="text-[9px] text-muted-foreground shrink-0">def</span>
                         ) : null}
                       </div>
-                      <div className="mt-1 text-xs font-medium text-muted-foreground">
+                      <div className="mt-0.5 text-[10px] text-muted-foreground truncate">
                         {preset.summary}
-                      </div>
-                      <div className="mt-1 label-tiny text-muted-foreground/80">
-                        {preset.description}
                       </div>
                     </button>
                   ))}
                 </div>
-                <FieldDescription className="label-tiny text-muted-foreground/50">
-                  {selectedWorkerModelPreset
-                    ? `${selectedWorkerModelPreset.label} is selected. ${selectedWorkerModelPreset.description}`
-                    : "Pick the worker tier that best matches the assignment."}
-                </FieldDescription>
               </Field>
               <Field className="space-y-2">
-                <FieldLabel className="label-tiny text-muted-foreground">Reasoning</FieldLabel>
-                <div className="flex flex-wrap gap-2">
+                <FieldLabel className="text-xs text-muted-foreground">Reasoning</FieldLabel>
+                <div className="flex flex-wrap gap-1.5">
                   {MANAGER_WORKER_MODEL_CAPABILITIES.reasoningEffortLevels.map((option) => (
                     <button
                       key={option.value}
@@ -827,78 +764,63 @@ export function ManagerConsolePane({
                           option.value as CodexModelOptions["reasoningEffort"],
                         )
                       }
-                      className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                      className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
                         workerReasoningEffort === option.value
                           ? "border-border bg-accent text-accent-foreground"
                           : "border-border/60 bg-card text-muted-foreground hover:bg-accent/30"
                       }`}
                     >
                       {option.label}
-                      {option.isDefault ? " (Default)" : ""}
                     </button>
                   ))}
                 </div>
-                <FieldDescription className="label-tiny text-muted-foreground/50">
-                  Keep `High` for the normal default. Drop to `Medium` or `Low` for cheaper support
-                  work, or raise to `Extra High` for tougher diagnosis.
-                </FieldDescription>
               </Field>
               <Field className="space-y-2">
-                <FieldLabel className="label-tiny text-muted-foreground">Speed</FieldLabel>
+                <FieldLabel className="text-xs text-muted-foreground">Speed</FieldLabel>
                 <button
                   type="button"
                   onClick={() => setWorkerFastMode((current) => !current)}
-                  className={`flex w-full items-start justify-between rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                  className={`flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-left transition-colors ${
                     workerFastMode
                       ? "border-border bg-accent text-accent-foreground"
                       : "border-border/60 bg-card text-foreground hover:bg-accent/40"
                   }`}
                 >
-                  <div>
-                    <div className="text-sm font-medium">Fast mode</div>
-                    <div className="label-tiny text-muted-foreground/80">
-                      Prefer quicker turnaround when the task benefits from speed over depth.
-                    </div>
-                  </div>
-                  <Badge variant={workerFastMode ? "success" : "outline"} className="label-tiny">
+                  <div className="text-sm font-medium">Fast mode</div>
+                  <span
+                    className={`text-xs ${workerFastMode ? "text-success-foreground" : "text-muted-foreground"}`}
+                  >
                     {workerFastMode ? "On" : "Off"}
-                  </Badge>
+                  </span>
                 </button>
               </Field>
-              <Field className="space-y-2">
-                <FieldLabel className="label-tiny text-muted-foreground">
-                  Mission Assignment
+              <Field className="space-y-1.5">
+                <FieldLabel className="text-xs text-muted-foreground">
+                  Mission assignment
                 </FieldLabel>
                 <Textarea
                   value={workerPrompt}
                   onChange={(event) => setWorkerPrompt(event.target.value)}
                   placeholder="Implement the fix, run verification, and reconcile outcome..."
-                  className="min-h-[120px] border-border/40 bg-card/50 font-mono text-sm leading-relaxed focus:border-primary/40 focus:ring-primary/10"
+                  className="min-h-[100px] border-border/40 bg-card/50 text-sm leading-relaxed"
                 />
-                <FieldDescription className="label-tiny text-muted-foreground/50">
-                  Define scope, expected output, and verification steps.
-                </FieldDescription>
               </Field>
             </DialogPanel>
-            <DialogFooter>
+            <DialogFooter className="shrink-0 pt-4 border-t border-border/40">
               <Button
                 type="button"
                 variant="outline"
-                className="font-mono label-tiny"
+                className="text-xs"
                 onClick={() => {
                   resetWorkerLaunchDraft();
                   setDelegateDialogOpen(false);
                 }}
                 disabled={isLaunchingWorker}
               >
-                Abort
+                Cancel
               </Button>
-              <Button
-                type="submit"
-                disabled={isLaunchingWorker}
-                className="px-6 font-mono label-tiny"
-              >
-                {isLaunchingWorker ? "Launching Swarm..." : "Execute Mission"}
+              <Button type="submit" disabled={isLaunchingWorker} className="px-4 text-xs">
+                {isLaunchingWorker ? "Launching..." : "Launch"}
               </Button>
             </DialogFooter>
           </form>
@@ -916,20 +838,20 @@ export function ManagerConsolePane({
                 <DialogTitle className="font-display text-lg font-medium">
                   Identify Coordinator
                 </DialogTitle>
-                <DialogDescription className="font-mono label-tiny text-muted-foreground/70">
+                <DialogDescription className="text-xs text-muted-foreground/70">
                   Rename manager entity
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
-          <DialogPanel className="py-6 font-mono">
+          <DialogPanel className="py-6">
             <Field className="space-y-2">
-              <FieldLabel className="label-tiny text-muted-foreground">Durable Name</FieldLabel>
+              <FieldLabel className="text-xs text-muted-foreground">Durable Name</FieldLabel>
               <Input
                 value={managerTitleDraft}
                 onChange={(event) => setManagerTitleDraft(event.target.value)}
                 placeholder="e.g., Frontend Lead"
-                className="border-border/40 bg-card/50 font-mono text-sm focus:border-primary/40"
+                className="border-border/40 bg-card/50 text-sm focus:border-primary/40"
               />
             </Field>
           </DialogPanel>
@@ -937,7 +859,7 @@ export function ManagerConsolePane({
             <Button
               type="button"
               variant="outline"
-              className="font-mono label-tiny"
+              className="text-xs"
               onClick={() => setRenameDialogOpen(false)}
               disabled={isSavingTitle}
             >
@@ -947,7 +869,7 @@ export function ManagerConsolePane({
               type="button"
               onClick={() => void saveManagerTitle()}
               disabled={isSavingTitle}
-              className="px-6 font-mono label-tiny"
+              className="px-6 text-xs"
             >
               {isSavingTitle ? "Updating..." : "Commit Name"}
             </Button>
@@ -956,82 +878,69 @@ export function ManagerConsolePane({
       </Dialog>
 
       <Dialog open={sendInputDialogOpen} onOpenChange={setSendInputDialogOpen}>
-        <DialogPopup className="max-w-xl">
-          <DialogHeader>
+        <DialogPopup className="max-w-xl max-h-[85vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <div className="flex items-center gap-2.5">
               <div className="flex size-8 items-center justify-center rounded-lg border border-border/60 bg-secondary text-foreground">
                 <MessageSquareIcon className="size-4" />
               </div>
               <div>
-                <DialogTitle className="font-display text-lg font-medium">
-                  Send Input to Worker
-                </DialogTitle>
-                <DialogDescription className="font-mono label-tiny text-muted-foreground/70">
-                  {selectedWorker ? selectedWorker.title : "Choose delivery mode explicitly"}
+                <DialogTitle className="font-display text-lg font-medium">Send input</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground/70">
+                  {selectedWorker ? selectedWorker.title : "Choose delivery mode"}
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
-          <form onSubmit={sendInputToWorker}>
-            <DialogPanel className="space-y-6 py-6 font-mono">
+          <form onSubmit={sendInputToWorker} className="flex flex-col flex-1 min-h-0">
+            <DialogPanel className="flex-1 overflow-y-auto py-4 space-y-4">
               <Field className="space-y-2">
-                <FieldLabel className="label-tiny text-muted-foreground">Delivery Mode</FieldLabel>
-                <div className="grid grid-cols-2 gap-2">
+                <FieldLabel className="text-xs text-muted-foreground">Delivery mode</FieldLabel>
+                <div className="grid grid-cols-2 gap-1.5">
                   <button
                     type="button"
                     onClick={() => setWorkerInputMode("interrupt")}
                     disabled={!selectedWorker || !workerSupportsInterrupt(selectedWorker)}
-                    className={`rounded-xl border px-3 py-2 text-left transition-colors ${
+                    className={`rounded-lg border px-2.5 py-2 text-left transition-colors ${
                       workerInputMode === "interrupt"
                         ? "border-border bg-accent text-accent-foreground"
                         : "border-border/60 bg-card text-muted-foreground"
                     } disabled:cursor-not-allowed disabled:opacity-50`}
                   >
                     <div className="text-sm font-medium">Interrupt</div>
-                    <div className="label-tiny">
-                      Stop the current turn first, then send the new instruction.
+                    <div className="text-[10px] text-muted-foreground/80">
+                      Stop current turn first
                     </div>
                   </button>
                   <button
                     type="button"
                     onClick={() => setWorkerInputMode("queue")}
-                    className={`rounded-xl border px-3 py-2 text-left transition-colors ${
+                    className={`rounded-lg border px-2.5 py-2 text-left transition-colors ${
                       workerInputMode === "queue"
                         ? "border-border bg-accent text-accent-foreground"
                         : "border-border/60 bg-card text-muted-foreground"
                     }`}
                   >
-                    <div className="text-sm font-medium">Queue by Default</div>
-                    <div className="label-tiny">
-                      Send a follow-up turn without interrupting the current one.
-                    </div>
+                    <div className="text-sm font-medium">Queue</div>
+                    <div className="text-[10px] text-muted-foreground/80">Add as follow-up</div>
                   </button>
                 </div>
-                <FieldDescription className="label-tiny text-muted-foreground/50">
-                  {!selectedWorker
-                    ? "Choose a worker first."
-                    : workerSupportsInterrupt(selectedWorker)
-                      ? "Both modes are available because this worker is still active."
-                      : "Interrupt is unavailable because this worker is not actively running right now."}
-                </FieldDescription>
               </Field>
-              <Field className="space-y-2">
-                <FieldLabel className="label-tiny text-muted-foreground">
-                  Follow-up Input
-                </FieldLabel>
+              <Field className="space-y-1.5">
+                <FieldLabel className="text-xs text-muted-foreground">Message</FieldLabel>
                 <Textarea
                   value={workerInputDraft}
                   onChange={(event) => setWorkerInputDraft(event.target.value)}
-                  placeholder="Clarify the next step, unblock a decision, or redirect the worker..."
-                  className="min-h-[140px] border-border/40 bg-card/50 font-mono text-sm leading-relaxed focus:border-primary/40 focus:ring-primary/10"
+                  placeholder="Clarify the next step..."
+                  className="min-h-[100px] border-border/40 bg-card/50 text-sm leading-relaxed"
                 />
               </Field>
             </DialogPanel>
-            <DialogFooter>
+            <DialogFooter className="shrink-0 pt-4 border-t border-border/40">
               <Button
                 type="button"
                 variant="outline"
-                className="font-mono label-tiny"
+                className="text-xs"
                 onClick={() => setSendInputDialogOpen(false)}
                 disabled={isSendingWorkerInput}
               >
@@ -1040,9 +949,9 @@ export function ManagerConsolePane({
               <Button
                 type="submit"
                 disabled={isSendingWorkerInput || !selectedWorker}
-                className="px-6 font-mono label-tiny"
+                className="px-4 text-xs"
               >
-                {isSendingWorkerInput ? "Sending..." : "Send to Worker"}
+                {isSendingWorkerInput ? "Sending..." : "Send"}
               </Button>
             </DialogFooter>
           </form>

@@ -1,4 +1,36 @@
 import {
+  type CollisionDetection,
+  closestCorners,
+  DndContext,
+  type DragCancelEvent,
+  type DragEndEvent,
+  type DragStartEvent,
+  PointerSensor,
+  pointerWithin,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { autoAnimate } from "@formkit/auto-animate";
+import {
+  DEFAULT_MODEL_BY_PROVIDER,
+  type DesktopUpdateState,
+  type GitStatusResult,
+  type ProjectId,
+  ThreadId,
+} from "@t3tools/contracts";
+import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
+import {
+  MANAGER_INTERACTION_MODE,
+  MANAGER_MODEL_SELECTION,
+  MANAGER_THREAD_TITLE,
+} from "@t3tools/shared/manager";
+import { useQueries } from "@tanstack/react-query";
+import { Link, useLocation, useNavigate, useParams } from "@tanstack/react-router";
+import { isNonEmpty as isNonEmptyString } from "effect/String";
+import {
   ArchiveIcon,
   ArrowUpDownIcon,
   BotIcon,
@@ -10,14 +42,7 @@ import {
   TerminalIcon,
   TriangleAlertIcon,
 } from "lucide-react";
-import { ProjectFavicon } from "./ProjectFavicon";
-import { autoAnimate } from "@formkit/auto-animate";
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
   type Dispatch,
   type KeyboardEvent,
   type MouseEvent,
@@ -25,48 +50,19 @@ import {
   type PointerEvent,
   type ReactNode,
   type SetStateAction,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 import { useShallow } from "zustand/react/shallow";
-import {
-  DndContext,
-  type DragCancelEvent,
-  type CollisionDetection,
-  PointerSensor,
-  type DragStartEvent,
-  closestCorners,
-  pointerWithin,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-kit/modifiers";
-import { CSS } from "@dnd-kit/utilities";
-import {
-  DEFAULT_MODEL_BY_PROVIDER,
-  type DesktopUpdateState,
-  ProjectId,
-  ThreadId,
-  type GitStatusResult,
-} from "@t3tools/contracts";
-import {
-  MANAGER_INTERACTION_MODE,
-  MANAGER_MODEL_SELECTION,
-  MANAGER_THREAD_TITLE,
-} from "@t3tools/shared/manager";
-import { useQueries } from "@tanstack/react-query";
-import { Link, useLocation, useNavigate, useParams } from "@tanstack/react-router";
-import {
-  type SidebarProjectSortOrder,
-  type SidebarThreadSortOrder,
-} from "@t3tools/contracts/settings";
-import { isElectron } from "../env";
+import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { useSettings, useUpdateSettings } from "~/hooks/useSettings";
 import { APP_STAGE_LABEL, APP_VERSION } from "../branding";
-import { isTerminalFocused } from "../lib/terminalFocus";
-import { isLinuxPlatform, isMacPlatform, newCommandId, newProjectId } from "../lib/utils";
-import { useStore } from "../store";
-import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
-import { useUiStateStore } from "../uiStateStore";
+import { useComposerDraftStore } from "../composerDraftStore";
+import { isElectron } from "../env";
+import { useThreadActions } from "../hooks/useThreadActions";
 import {
   resolveShortcutCommand,
   shortcutLabelForCommand,
@@ -76,13 +72,17 @@ import {
   threadTraversalDirectionFromCommand,
 } from "../keybindings";
 import { gitStatusQueryOptions } from "../lib/gitReactQuery";
+import { isTerminalFocused } from "../lib/terminalFocus";
+import { isLinuxPlatform, isMacPlatform, newCommandId, newProjectId } from "../lib/utils";
 import { readNativeApi } from "../nativeApi";
-import { useComposerDraftStore } from "../composerDraftStore";
-
-import { useThreadActions } from "../hooks/useThreadActions";
-import { toastManager } from "./ui/toast";
+import { useServerKeybindings } from "../rpc/serverState";
+import { useStore } from "../store";
+import { useSidebarThreadSummaryById } from "../storeSelectors";
+import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
+import { useThreadSelectionStore } from "../threadSelectionStore";
 import { formatRelativeTimeLabel } from "../timestampFormat";
-import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
+import type { Project } from "../types";
+import { useUiStateStore } from "../uiStateStore";
 import {
   getArm64IntelBuildWarningDescription,
   getDesktopUpdateActionError,
@@ -92,17 +92,33 @@ import {
   shouldShowArm64IntelBuildWarning,
   shouldToastDesktopUpdateActionResult,
 } from "./desktopUpdate.logic";
+import { ProjectFavicon } from "./ProjectFavicon";
+import {
+  getVisibleSidebarThreadIds,
+  getVisibleThreadsForProject,
+  isContextMenuPointerDown,
+  orderItemsByPreferredIds,
+  resolveAdjacentThreadId,
+  resolveProjectStatusIndicator,
+  resolveThreadRowClassName,
+  resolveThreadStatusPill,
+  shouldClearThreadSelectionOnMouseDown,
+  sortProjectsForSidebar,
+  sortThreadsForSidebar,
+  useThreadJumpHintVisibility,
+} from "./Sidebar.logic";
+import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
+import { SidebarUpdatePill } from "./sidebar/SidebarUpdatePill";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Menu, MenuGroup, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "./ui/menu";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
   SidebarHeader,
-  SidebarMenuAction,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
@@ -111,28 +127,9 @@ import {
   SidebarSeparator,
   SidebarTrigger,
 } from "./ui/sidebar";
-import { useThreadSelectionStore } from "../threadSelectionStore";
-import { isNonEmpty as isNonEmptyString } from "effect/String";
-import {
-  getVisibleSidebarThreadIds,
-  getVisibleThreadsForProject,
-  resolveAdjacentThreadId,
-  isContextMenuPointerDown,
-  resolveProjectStatusIndicator,
-  resolveThreadRowClassName,
-  resolveThreadStatusPill,
-  orderItemsByPreferredIds,
-  shouldClearThreadSelectionOnMouseDown,
-  sortProjectsForSidebar,
-  sortThreadsForSidebar,
-  useThreadJumpHintVisibility,
-} from "./Sidebar.logic";
-import { SidebarUpdatePill } from "./sidebar/SidebarUpdatePill";
-import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
-import { useSettings, useUpdateSettings } from "~/hooks/useSettings";
-import { useServerKeybindings } from "../rpc/serverState";
-import { useSidebarThreadSummaryById } from "../storeSelectors";
-import type { Project } from "../types";
+import { toastManager } from "./ui/toast";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+
 const THREAD_PREVIEW_LIMIT = 6;
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
   updated_at: "Last user message",
@@ -2116,7 +2113,7 @@ export default function Sidebar() {
             ) : null}
             <SidebarGroup className="px-2 py-2">
               <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
-                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                <span className="text-[10px] font-medium tracking-wider text-muted-foreground/60">
                   Projects
                 </span>
                 <div className="flex items-center gap-1">

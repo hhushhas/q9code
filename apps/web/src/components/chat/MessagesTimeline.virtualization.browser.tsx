@@ -153,6 +153,7 @@ function createBaseTimelineProps(input: {
       input.messages ?? [],
       input.proposedPlans ?? [],
       input.workEntries ?? [],
+      [],
     ),
     completionDividerBeforeEntryId: input.completionDividerBeforeEntryId ?? null,
     completionSummary: null,

@@ -325,6 +325,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
               completedAt: "2026-02-24T00:00:08.000Z",
             },
           ],
+          scheduledMessages: [],
           session: {
             threadId: ThreadId.makeUnsafe("thread-1"),
             status: "running",
