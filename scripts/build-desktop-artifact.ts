@@ -9,6 +9,7 @@ import desktopPackageJson from "../apps/desktop/package.json" with { type: "json
 import serverPackageJson from "../apps/server/package.json" with { type: "json" };
 
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
+import { ensureEffectRuntimeDependencyPins } from "./lib/effect-runtime-pins.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
@@ -583,6 +584,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
         cause,
       }),
   });
+  const pinnedServerDependencies = ensureEffectRuntimeDependencyPins(resolvedServerDependencies);
   const resolvedDesktopRuntimeDependencies = yield* Effect.try({
     try: () =>
       resolveDesktopRuntimeDependencies(
@@ -671,7 +673,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
       options.mockUpdateServerPort,
     ),
     dependencies: {
-      ...resolvedServerDependencies,
+      ...pinnedServerDependencies,
       ...resolvedDesktopRuntimeDependencies,
     },
     devDependencies: {
