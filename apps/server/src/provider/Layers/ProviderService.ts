@@ -575,16 +575,59 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           operation: "ProviderService.stopSession",
           allowRecovery: false,
         });
+        const binding = Option.getOrUndefined(yield* directory.getBinding(input.threadId));
         metricProvider = routed.adapter.provider;
         yield* Effect.annotateCurrentSpan({
           "provider.operation": "stop-session",
           "provider.kind": routed.adapter.provider,
           "provider.thread_id": input.threadId,
         });
+        const now = new Date().toISOString();
+        const activeSession = routed.isActive
+          ? yield* routed.adapter
+              .listSessions()
+              .pipe(
+                Effect.map((sessions) =>
+                  sessions.find((session) => session.threadId === input.threadId),
+                ),
+              )
+          : undefined;
         if (routed.isActive) {
           yield* routed.adapter.stopSession(routed.threadId);
         }
-        yield* directory.remove(input.threadId);
+        const persistedModelSelection = readPersistedModelSelection(binding?.runtimePayload);
+        const persistedPayload =
+          binding?.runtimePayload && typeof binding.runtimePayload === "object"
+            ? { ...(binding.runtimePayload as Record<string, unknown>) }
+            : {};
+        const runtimePayload =
+          activeSession !== undefined
+            ? toRuntimePayloadFromSession(activeSession, {
+                ...(persistedModelSelection !== undefined
+                  ? { modelSelection: persistedModelSelection }
+                  : {}),
+                lastRuntimeEvent: "provider.stopSession",
+                lastRuntimeEventAt: now,
+              })
+            : {
+                ...persistedPayload,
+                activeTurnId: null,
+                lastRuntimeEvent: "provider.stopSession",
+                lastRuntimeEventAt: now,
+              };
+        const runtimeMode = activeSession?.runtimeMode ?? binding?.runtimeMode;
+        const resumeCursor = activeSession?.resumeCursor ?? binding?.resumeCursor;
+        const runtimeModeBinding = runtimeMode !== undefined ? ({ runtimeMode } as const) : {};
+        const resumeCursorBinding = resumeCursor !== undefined ? ({ resumeCursor } as const) : {};
+        const stoppedBinding: ProviderRuntimeBinding = {
+          ...runtimeModeBinding,
+          ...resumeCursorBinding,
+          threadId: input.threadId,
+          provider: activeSession?.provider ?? binding?.provider ?? routed.adapter.provider,
+          status: "stopped",
+          runtimePayload,
+        };
+        yield* directory.upsert(stoppedBinding);
         yield* analytics.record("provider.session.stopped", {
           provider: routed.adapter.provider,
         });

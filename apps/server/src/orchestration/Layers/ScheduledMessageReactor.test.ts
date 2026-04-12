@@ -331,6 +331,67 @@ describe("ScheduledMessageReactor", () => {
     );
 
     await waitFor(async () => {
+      const events = await Effect.runPromise(
+        Stream.runCollect(harness.engine.readEvents(0)).pipe(
+          Effect.map((entries) => Array.from(entries) as Array<{ type: string; payload: any }>),
+        ),
+      );
+      return events.some(
+        (event) =>
+          event.type === "thread.turn-interrupt-requested" &&
+          event.payload.threadId === ThreadId.makeUnsafe("thread-worker"),
+      );
+    });
+
+    const eventsBeforeSettlement = await Effect.runPromise(
+      Stream.runCollect(harness.engine.readEvents(0)).pipe(
+        Effect.map((chunk) => Array.from(chunk)),
+      ),
+    );
+    expect(
+      eventsBeforeSettlement.some(
+        (event) =>
+          event.type === "thread.turn-interrupt-requested" &&
+          event.payload.threadId === ThreadId.makeUnsafe("thread-worker"),
+      ),
+    ).toBe(true);
+    expect(
+      eventsBeforeSettlement.some(
+        (event) =>
+          event.type === "thread.turn-start-requested" &&
+          event.payload.threadId === ThreadId.makeUnsafe("thread-worker"),
+      ),
+    ).toBe(false);
+    const workerBeforeSettlement = (
+      await Effect.runPromise(harness.engine.getReadModel())
+    ).threads.find((thread) => thread.id === ThreadId.makeUnsafe("thread-worker"));
+    expect(
+      workerBeforeSettlement?.messages.some(
+        (message) =>
+          message.role === "user" && message.text === "Please stop and prioritize the blocker.",
+      ) ?? false,
+    ).toBe(false);
+
+    const settledAt = new Date(Date.now() + 1_000).toISOString();
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.makeUnsafe("cmd-worker-ready-after-scheduled-interrupt"),
+        threadId: ThreadId.makeUnsafe("thread-worker"),
+        session: {
+          threadId: ThreadId.makeUnsafe("thread-worker"),
+          status: "ready",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: settledAt,
+        },
+        createdAt: settledAt,
+      }),
+    );
+
+    await waitFor(async () => {
       const current = await Effect.runPromise(harness.engine.getReadModel());
       const worker = current.threads.find(
         (thread) => thread.id === ThreadId.makeUnsafe("thread-worker"),
@@ -348,13 +409,26 @@ describe("ScheduledMessageReactor", () => {
         Effect.map((chunk) => Array.from(chunk)),
       ),
     );
+    const readySessionSetIndex = events.findIndex(
+      (event) =>
+        event.type === "thread.session-set" &&
+        event.payload.threadId === ThreadId.makeUnsafe("thread-worker") &&
+        event.payload.session.status === "ready",
+    );
+    const followUpTurnStartIndex = events.findIndex(
+      (event) =>
+        event.type === "thread.turn-start-requested" &&
+        event.payload.threadId === ThreadId.makeUnsafe("thread-worker"),
+    );
+    expect(readySessionSetIndex).toBeGreaterThan(-1);
+    expect(followUpTurnStartIndex).toBeGreaterThan(readySessionSetIndex);
     expect(
-      events.some(
+      events.filter(
         (event) =>
-          event.type === "thread.turn-interrupt-requested" &&
+          event.type === "thread.created" &&
           event.payload.threadId === ThreadId.makeUnsafe("thread-worker"),
       ),
-    ).toBe(true);
+    ).toHaveLength(1);
   });
 
   it("delivers overdue scheduled messages immediately on startup and marks them as delayed recovery", async () => {

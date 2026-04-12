@@ -237,6 +237,13 @@ describe("ManagerThreadReactor", () => {
       "workers",
       `${workers[0]?.id}.md`,
     );
+    await waitFor(
+      async () =>
+        fs.existsSync(workerLogPath) &&
+        fs
+          .readFileSync(workerLogPath, "utf8")
+          .includes('Worker thread created as "Reconnect patch".'),
+    );
     expect(fs.existsSync(workerLogPath)).toBe(true);
     expect(fs.readFileSync(workerLogPath, "utf8")).toContain(
       'Worker thread created as "Reconnect patch".',
@@ -630,6 +637,19 @@ describe("ManagerThreadReactor", () => {
         (activity) => activity.kind === "manager.worker.completed",
       );
     });
+    await waitFor(async () => {
+      const readModel = await Effect.runPromise(harness.engine.getReadModel());
+      const manager = readModel.threads.find(
+        (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+      );
+      const managerAlertMessage = [...(manager?.messages ?? [])]
+        .toReversed()
+        .find((message) => message.role === "user" && extractManagerInternalAlert(message.text));
+      return (
+        extractManagerInternalAlert(managerAlertMessage?.text ?? "")?.alerts[0]?.workerTitle ===
+        "Reconnect worker"
+      );
+    });
 
     const readModel = await Effect.runPromise(harness.engine.getReadModel());
     const manager = readModel.threads.find(
@@ -706,6 +726,19 @@ describe("ManagerThreadReactor", () => {
           activity.summary.includes("reported a blocker"),
       );
     });
+    await waitFor(async () => {
+      const readModel = await Effect.runPromise(harness.engine.getReadModel());
+      const manager = readModel.threads.find(
+        (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+      );
+      const managerAlertMessage = [...(manager?.messages ?? [])]
+        .toReversed()
+        .find((message) => message.role === "user" && extractManagerInternalAlert(message.text));
+      return (
+        extractManagerInternalAlert(managerAlertMessage?.text ?? "")?.alerts[0]?.kind ===
+        "worker.blocked"
+      );
+    });
 
     const readModel = await Effect.runPromise(harness.engine.getReadModel());
     const manager = readModel.threads.find(
@@ -757,7 +790,7 @@ describe("ManagerThreadReactor", () => {
     );
     expect(manager?.title).toBe("Beacon coordinator");
     expect(manager?.managerScratchpad?.folderPath).toBe(
-      path.join(harness.workspaceRoot, "scratchpad", "beacon-coordinator"),
+      path.join(harness.workspaceRoot, "scratchpad", "beacon-coordinator-thread-manager"),
     );
     expect(fs.readFileSync(manager?.managerScratchpad?.sessionLogPath ?? "", "utf8")).toContain(
       'Manager renamed to "Beacon coordinator".',
@@ -882,7 +915,7 @@ describe("ManagerThreadReactor", () => {
     ).toBe("Queued worker");
   });
 
-  it("interrupts a running worker before sending manager follow-up input", async () => {
+  it("waits for the selected running worker to settle before sending interrupt-mode follow-up input", async () => {
     const harness = await createHarness();
     const createdAt = new Date().toISOString();
 
@@ -946,7 +979,67 @@ describe("ManagerThreadReactor", () => {
           Effect.map((entries) => Array.from(entries) as Array<{ type: string; payload: any }>),
         ),
       )) as Array<{ type: string; payload: any }>;
-      return events.some((event) => event.type === "thread.turn-interrupt-requested");
+      return events.some(
+        (event) =>
+          event.type === "thread.turn-interrupt-requested" &&
+          event.payload.threadId === ThreadId.makeUnsafe("thread-worker-input"),
+      );
+    });
+
+    const eventsBeforeSettlement = (await Effect.runPromise(
+      Stream.runCollect(harness.engine.readEvents(0)).pipe(
+        Effect.map((entries) => Array.from(entries) as Array<{ type: string; payload: any }>),
+      ),
+    )) as Array<{ type: string; payload: any }>;
+    expect(
+      eventsBeforeSettlement.some((event) => event.type === "manager.worker-input-requested"),
+    ).toBe(true);
+    expect(
+      eventsBeforeSettlement.some(
+        (event) =>
+          event.type === "thread.turn-interrupt-requested" &&
+          event.payload.threadId === ThreadId.makeUnsafe("thread-worker-input"),
+      ),
+    ).toBe(true);
+    expect(
+      eventsBeforeSettlement.some(
+        (event) =>
+          event.type === "thread.turn-start-requested" &&
+          event.payload.threadId === ThreadId.makeUnsafe("thread-worker-input") &&
+          event.payload.messageId === asMessageId("msg-manager-worker-input"),
+      ),
+    ).toBe(false);
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.makeUnsafe("cmd-thread-session-set-worker-manager-input-ready"),
+        threadId: ThreadId.makeUnsafe("thread-worker-input"),
+        session: {
+          threadId: ThreadId.makeUnsafe("thread-worker-input"),
+          status: "ready",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: new Date(Date.now() + 1_000).toISOString(),
+        },
+        createdAt: new Date(Date.now() + 1_000).toISOString(),
+      }),
+    );
+
+    await waitFor(async () => {
+      const events = (await Effect.runPromise(
+        Stream.runCollect(harness.engine.readEvents(0)).pipe(
+          Effect.map((entries) => Array.from(entries) as Array<{ type: string; payload: any }>),
+        ),
+      )) as Array<{ type: string; payload: any }>;
+      return events.some(
+        (event) =>
+          event.type === "thread.turn-start-requested" &&
+          event.payload.threadId === ThreadId.makeUnsafe("thread-worker-input") &&
+          event.payload.messageId === asMessageId("msg-manager-worker-input"),
+      );
     });
 
     const events = (await Effect.runPromise(
@@ -954,22 +1047,27 @@ describe("ManagerThreadReactor", () => {
         Effect.map((entries) => Array.from(entries) as Array<{ type: string; payload: any }>),
       ),
     )) as Array<{ type: string; payload: any }>;
-    expect(events.some((event) => event.type === "manager.worker-input-requested")).toBe(true);
+    const readySessionSetIndex = events.findIndex(
+      (event) =>
+        event.type === "thread.session-set" &&
+        event.payload.threadId === ThreadId.makeUnsafe("thread-worker-input") &&
+        event.payload.session.status === "ready",
+    );
+    const followUpTurnStartIndex = events.findIndex(
+      (event) =>
+        event.type === "thread.turn-start-requested" &&
+        event.payload.threadId === ThreadId.makeUnsafe("thread-worker-input") &&
+        event.payload.messageId === asMessageId("msg-manager-worker-input"),
+    );
+    expect(readySessionSetIndex).toBeGreaterThan(-1);
+    expect(followUpTurnStartIndex).toBeGreaterThan(readySessionSetIndex);
     expect(
-      events.some(
+      events.filter(
         (event) =>
-          event.type === "thread.turn-interrupt-requested" &&
+          event.type === "thread.created" &&
           event.payload.threadId === ThreadId.makeUnsafe("thread-worker-input"),
       ),
-    ).toBe(true);
-    expect(
-      events.some(
-        (event) =>
-          event.type === "thread.turn-start-requested" &&
-          event.payload.threadId === ThreadId.makeUnsafe("thread-worker-input") &&
-          event.payload.messageId === asMessageId("msg-manager-worker-input"),
-      ),
-    ).toBe(true);
+    ).toHaveLength(1);
 
     const logPath = harness.managerScratchpad?.sessionLogPath ?? "";
     await waitFor(
@@ -1193,6 +1291,13 @@ describe("ManagerThreadReactor", () => {
       provider: "claudeAgent",
       model: "claude-sonnet-4-6",
     });
+    expect(
+      events.filter(
+        (event) =>
+          event.type === "thread.created" &&
+          event.payload.threadId === ThreadId.makeUnsafe("thread-worker-claude-followup"),
+      ),
+    ).toHaveLength(1);
   });
 
   it("records dedicated manager cards for approval, input, and failure worker states", async () => {

@@ -65,21 +65,19 @@ describe("decider manager threads", () => {
     const expectedTitle = pickDefaultManagerThreadTitle(
       "project-1:thread-manager:2026-04-08T08:00:00.000Z",
     );
+    const expectedSlug = `${expectedTitle
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")}-thread-manager`;
     expect(event.type).toBe("thread.created");
     expect(event.payload.title).toBe(expectedTitle);
     expect("managerScratchpad" in event.payload && event.payload.managerScratchpad).toEqual({
-      folderPath: `/tmp/q9-code/scratchpad/${expectedTitle
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "")}`,
-      sessionLogPath: `/tmp/q9-code/scratchpad/${expectedTitle
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "")}/manager-session-log.md`,
+      folderPath: `/tmp/q9-code/scratchpad/${expectedSlug}`,
+      sessionLogPath: `/tmp/q9-code/scratchpad/${expectedSlug}/manager-session-log.md`,
     });
   });
 
-  it("rejects creating a second manager thread for the same project", async () => {
+  it("allows creating multiple manager threads for the same project", async () => {
     const now = "2026-04-08T08:00:00.000Z";
     const initial = createEmptyReadModel(now);
     const withProject = await Effect.runPromise(
@@ -140,7 +138,7 @@ describe("decider manager threads", () => {
       }),
     );
 
-    const result = await Effect.runPromiseExit(
+    const result = await Effect.runPromise(
       decideOrchestrationCommand({
         command: {
           type: "thread.create",
@@ -162,8 +160,16 @@ describe("decider manager threads", () => {
         readModel: withManager,
       }),
     );
+    const event = Array.isArray(result) ? result[0] : result;
 
-    expect(Exit.isFailure(result)).toBe(true);
+    expect(event.type).toBe("thread.created");
+    expect(event.payload.threadId).toBe(asThreadId("thread-manager-2"));
+    expect(event.payload.role).toBe("manager");
+    expect(event.payload.managerScratchpad).toEqual({
+      folderPath: "/tmp/q9-code/scratchpad/second-manager-thread-manager-2",
+      sessionLogPath:
+        "/tmp/q9-code/scratchpad/second-manager-thread-manager-2/manager-session-log.md",
+    });
   });
 
   it("forces manager threads onto the coordinator model and default interaction mode", async () => {
@@ -302,8 +308,9 @@ describe("decider manager threads", () => {
     expect(event?.type).toBe("thread.meta-updated");
     expect(event?.payload.title).toBe("Beacon coordinator");
     expect(event?.payload.managerScratchpad).toEqual({
-      folderPath: "/tmp/q9-code/scratchpad/beacon-coordinator",
-      sessionLogPath: "/tmp/q9-code/scratchpad/beacon-coordinator/manager-session-log.md",
+      folderPath: "/tmp/q9-code/scratchpad/beacon-coordinator-thread-manager",
+      sessionLogPath:
+        "/tmp/q9-code/scratchpad/beacon-coordinator-thread-manager/manager-session-log.md",
     });
     expect(event?.payload.previousManagerScratchpad).toEqual({
       folderPath: "/tmp/q9-code/scratchpad/atlas-coordinator",

@@ -1,4 +1,5 @@
 import {
+  type ChatAttachment,
   CommandId,
   EventId,
   MessageId,
@@ -100,6 +101,15 @@ type ManagerWorkerMetadata = {
   readonly branch?: string | null | undefined;
   readonly worktreePath?: string | null | undefined;
 };
+type PendingManagerWorkerInput = {
+  readonly managerThreadId: ThreadId;
+  readonly workerThreadId: ThreadId;
+  readonly messageId: MessageId;
+  readonly text: string;
+  readonly attachments: ReadonlyArray<ChatAttachment>;
+  readonly requestedMode: "queue" | "interrupt";
+  readonly createdAt: string;
+};
 
 function asObjectRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
@@ -143,6 +153,7 @@ const make = Effect.gen(function* () {
   const handledManagerMessageIds = new Set<string>();
   const pendingManagerAlerts = new Map<ThreadId, ManagerInternalAlert[]>();
   const managerAlertDispatchInFlight = new Set<ThreadId>();
+  const pendingManagerWorkerInputs = new Map<ThreadId, PendingManagerWorkerInput[]>();
 
   const resolveThreadContext = Effect.fn("resolveThreadContext")(function* (threadId: ThreadId) {
     const readModel = yield* orchestrationEngine.getReadModel();
@@ -312,6 +323,120 @@ const make = Effect.gen(function* () {
     }
     return null;
   };
+
+  const enqueuePendingManagerWorkerInput = (input: PendingManagerWorkerInput) => {
+    const existing = pendingManagerWorkerInputs.get(input.workerThreadId) ?? [];
+    pendingManagerWorkerInputs.set(input.workerThreadId, [...existing, input]);
+  };
+
+  const shiftPendingManagerWorkerInput = (
+    workerThreadId: ThreadId,
+  ): PendingManagerWorkerInput | null => {
+    const existing = pendingManagerWorkerInputs.get(workerThreadId) ?? [];
+    const [next, ...rest] = existing;
+    if (!next) {
+      return null;
+    }
+    if (rest.length === 0) {
+      pendingManagerWorkerInputs.delete(workerThreadId);
+    } else {
+      pendingManagerWorkerInputs.set(workerThreadId, rest);
+    }
+    return next;
+  };
+
+  const dispatchManagerWorkerInput = Effect.fn("dispatchManagerWorkerInput")(function* (
+    input: PendingManagerWorkerInput,
+  ) {
+    const managerContext = yield* resolveThreadContextEventually({
+      threadId: input.managerThreadId,
+      predicate: (context) => {
+        if (context.thread.role !== "manager") {
+          return false;
+        }
+        return context.readModel.threads.some(
+          (thread) =>
+            thread.id === input.workerThreadId &&
+            thread.managerThreadId === context.thread.id &&
+            thread.deletedAt === null,
+        );
+      },
+    });
+    if (!managerContext || managerContext.thread.role !== "manager") {
+      return;
+    }
+
+    const workerThread =
+      managerContext.readModel.threads.find(
+        (thread) =>
+          thread.id === input.workerThreadId &&
+          thread.managerThreadId === managerContext.thread.id &&
+          thread.deletedAt === null,
+      ) ?? null;
+    if (!workerThread) {
+      return;
+    }
+
+    const workerMetadata = findWorkerMetadataByThreadId(managerContext.thread, workerThread.id);
+    const effectiveMode = input.requestedMode === "interrupt" ? "interrupt" : ("queue" as const);
+
+    yield* orchestrationEngine.dispatch({
+      type: "thread.turn.start",
+      commandId: serverCommandId("manager-worker-turn-start"),
+      threadId: workerThread.id,
+      message: {
+        messageId: input.messageId,
+        role: "user",
+        text: input.text,
+        attachments: input.attachments,
+      },
+      modelSelection: workerThread.modelSelection,
+      titleSeed: workerThread.title,
+      runtimeMode: workerThread.runtimeMode,
+      interactionMode: workerThread.interactionMode,
+      createdAt: input.createdAt,
+    });
+
+    yield* appendManagerActivity({
+      managerThreadId: managerContext.thread.id,
+      kind: "manager.worker.input.sent",
+      summary: `Sent ${effectiveMode === "interrupt" ? "interrupting" : "queued"} input to "${workerThread.title}"`,
+      payload: {
+        ...(workerMetadata ? { workerId: workerMetadata.workerId } : {}),
+        workerThreadId: workerThread.id,
+        workerTitle: workerThread.title,
+        requestedMode: input.requestedMode,
+        effectiveMode,
+        text: truncateText(input.text, 280),
+      },
+      createdAt: input.createdAt,
+    });
+    yield* appendManagerActivity({
+      managerThreadId: managerContext.thread.id,
+      kind: "manager.worker.input.mode",
+      summary:
+        effectiveMode === "interrupt"
+          ? `Interrupted "${workerThread.title}" before sending follow-up input`
+          : `Queued follow-up input for "${workerThread.title}"`,
+      payload: {
+        ...(workerMetadata ? { workerId: workerMetadata.workerId } : {}),
+        workerThreadId: workerThread.id,
+        workerTitle: workerThread.title,
+        requestedMode: input.requestedMode,
+        effectiveMode,
+      },
+      createdAt: input.createdAt,
+    });
+    yield* appendToManagerLog({
+      threadId: managerContext.thread.id,
+      createdAt: input.createdAt,
+      lines: [
+        `Manager sent input to worker "${workerThread.title}" (${workerThread.id})`,
+        `Mode: ${input.requestedMode}`,
+        `Input: ${truncateText(input.text, 600)}`,
+      ],
+    });
+  });
 
   function launchWorkerThread(input: {
     readonly managerThread: OrchestrationThread;
@@ -668,7 +793,6 @@ const make = Effect.gen(function* () {
       if (!workerThread) {
         return;
       }
-      const workerMetadata = findWorkerMetadataByThreadId(managerContext.thread, workerThread.id);
 
       const workerIsRunning =
         workerThread.session?.status === "running" ||
@@ -676,6 +800,15 @@ const make = Effect.gen(function* () {
       const shouldInterrupt = event.payload.mode === "interrupt" && workerIsRunning;
 
       if (shouldInterrupt) {
+        enqueuePendingManagerWorkerInput({
+          managerThreadId: managerContext.thread.id,
+          workerThreadId: workerThread.id,
+          messageId: event.payload.messageId,
+          text: event.payload.text,
+          attachments: event.payload.attachments,
+          requestedMode: event.payload.mode,
+          createdAt: event.payload.createdAt,
+        });
         yield* orchestrationEngine.dispatch({
           type: "thread.turn.interrupt",
           commandId: serverCommandId("manager-worker-turn-interrupt"),
@@ -686,64 +819,17 @@ const make = Effect.gen(function* () {
             : {}),
           createdAt: event.payload.createdAt,
         });
+        return;
       }
 
-      yield* orchestrationEngine.dispatch({
-        type: "thread.turn.start",
-        commandId: serverCommandId("manager-worker-turn-start"),
-        threadId: workerThread.id,
-        message: {
-          messageId: event.payload.messageId,
-          role: "user",
-          text: event.payload.text,
-          attachments: event.payload.attachments,
-        },
-        modelSelection: workerThread.modelSelection,
-        titleSeed: workerThread.title,
-        runtimeMode: workerThread.runtimeMode,
-        interactionMode: workerThread.interactionMode,
-        createdAt: event.payload.createdAt,
-      });
-
-      yield* appendManagerActivity({
+      yield* dispatchManagerWorkerInput({
         managerThreadId: managerContext.thread.id,
-        kind: "manager.worker.input.sent",
-        summary: `Sent ${shouldInterrupt ? "interrupting" : "queued"} input to "${workerThread.title}"`,
-        payload: {
-          ...(workerMetadata ? { workerId: workerMetadata.workerId } : {}),
-          workerThreadId: workerThread.id,
-          workerTitle: workerThread.title,
-          requestedMode: event.payload.mode,
-          effectiveMode: shouldInterrupt ? "interrupt" : "queue",
-          text: truncateText(event.payload.text, 280),
-        },
+        workerThreadId: workerThread.id,
+        messageId: event.payload.messageId,
+        text: event.payload.text,
+        attachments: event.payload.attachments,
+        requestedMode: event.payload.mode,
         createdAt: event.payload.createdAt,
-      });
-      yield* appendManagerActivity({
-        managerThreadId: managerContext.thread.id,
-        kind: "manager.worker.input.mode",
-        summary: shouldInterrupt
-          ? `Interrupted "${workerThread.title}" before sending follow-up input`
-          : event.payload.mode === "interrupt"
-            ? `Queued follow-up input for "${workerThread.title}" because interrupt was unavailable`
-            : `Queued follow-up input for "${workerThread.title}"`,
-        payload: {
-          ...(workerMetadata ? { workerId: workerMetadata.workerId } : {}),
-          workerThreadId: workerThread.id,
-          workerTitle: workerThread.title,
-          requestedMode: event.payload.mode,
-          effectiveMode: shouldInterrupt ? "interrupt" : "queue",
-        },
-        createdAt: event.payload.createdAt,
-      });
-      yield* appendToManagerLog({
-        threadId: managerContext.thread.id,
-        createdAt: event.payload.createdAt,
-        lines: [
-          `Manager sent input to worker "${workerThread.title}" (${workerThread.id})`,
-          `Mode: ${event.payload.mode}${shouldInterrupt ? "" : event.payload.mode === "interrupt" ? " (fell back to queue)" : ""}`,
-          `Input: ${truncateText(event.payload.text, 600)}`,
-        ],
       });
     });
   }
@@ -1273,6 +1359,16 @@ const make = Effect.gen(function* () {
                   : []),
               ],
             });
+          }
+
+          if (
+            event.payload.session.status !== "running" &&
+            event.payload.session.status !== "starting"
+          ) {
+            const pendingInput = shiftPendingManagerWorkerInput(context.thread.id);
+            if (pendingInput) {
+              yield* dispatchManagerWorkerInput(pendingInput);
+            }
           }
           return;
         }

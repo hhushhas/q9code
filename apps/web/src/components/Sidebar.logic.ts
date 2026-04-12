@@ -501,6 +501,55 @@ export function sortThreadsForSidebar<
   });
 }
 
+export function organizeProjectThreadsForSidebar<
+  T extends Pick<Thread, "id" | "managerThreadId" | "createdAt" | "updatedAt"> &
+    SidebarThreadSortInput,
+>(
+  threads: readonly T[],
+  sortOrder: SidebarThreadSortOrder,
+): {
+  orderedThreads: T[];
+  managerThreadIds: T["id"][];
+  managerWorkerIdsByManagerId: ReadonlyMap<T["id"], readonly T["id"][]>;
+} {
+  const managerThreads = sortThreadsForSidebar(
+    threads.filter((thread) => thread.role === "manager"),
+    sortOrder,
+  );
+  const managerWorkerIdsByManagerId = new Map<T["id"], readonly T["id"][]>();
+  const managedThreadIds = new Set<T["id"]>();
+  const independentThreads = threads.filter((thread) => thread.role !== "manager");
+  const orderedThreads: T[] = [];
+
+  for (const managerThread of managerThreads) {
+    const delegatedWorkers = sortThreadsForSidebar(
+      independentThreads.filter((thread) => thread.managerThreadId === managerThread.id),
+      sortOrder,
+    );
+
+    managerWorkerIdsByManagerId.set(
+      managerThread.id,
+      delegatedWorkers.map((worker) => worker.id),
+    );
+    for (const worker of delegatedWorkers) {
+      managedThreadIds.add(worker.id);
+    }
+
+    orderedThreads.push(managerThread, ...delegatedWorkers);
+  }
+
+  const unmanagedThreads = sortThreadsForSidebar(
+    independentThreads.filter((thread) => !managedThreadIds.has(thread.id)),
+    sortOrder,
+  );
+
+  return {
+    orderedThreads: [...orderedThreads, ...unmanagedThreads],
+    managerThreadIds: managerThreads.map((thread) => thread.id),
+    managerWorkerIdsByManagerId,
+  };
+}
+
 export function getFallbackThreadIdAfterDelete<
   T extends Pick<Thread, "id" | "projectId" | "createdAt" | "updatedAt"> & SidebarThreadSortInput,
 >(input: {

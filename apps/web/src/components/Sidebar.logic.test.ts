@@ -9,6 +9,7 @@ import {
   getProjectSortTimestamp,
   hasUnseenCompletion,
   isContextMenuPointerDown,
+  organizeProjectThreadsForSidebar,
   orderItemsByPreferredIds,
   resolveProjectStatusIndicator,
   resolveSidebarNewThreadSeedContext,
@@ -823,6 +824,62 @@ describe("sortThreadsForSidebar", () => {
     expect(sorted.map((thread) => thread.id)).toEqual([
       ThreadId.makeUnsafe("thread-manager"),
       ThreadId.makeUnsafe("thread-worker"),
+    ]);
+  });
+});
+
+describe("organizeProjectThreadsForSidebar", () => {
+  it("groups workers under each manager and keeps unmanaged threads separate", () => {
+    const grouped = organizeProjectThreadsForSidebar(
+      [
+        makeThread({
+          id: ThreadId.makeUnsafe("worker-under-manager-a"),
+          role: "worker",
+          managerThreadId: ThreadId.makeUnsafe("manager-a"),
+          updatedAt: "2026-03-09T10:40:00.000Z",
+        }),
+        makeThread({
+          id: ThreadId.makeUnsafe("manager-b"),
+          role: "manager",
+          updatedAt: "2026-03-09T10:30:00.000Z",
+        }),
+        makeThread({
+          id: ThreadId.makeUnsafe("manager-a"),
+          role: "manager",
+          updatedAt: "2026-03-09T10:50:00.000Z",
+        }),
+        makeThread({
+          id: ThreadId.makeUnsafe("worker-under-manager-b"),
+          role: "worker",
+          managerThreadId: ThreadId.makeUnsafe("manager-b"),
+          updatedAt: "2026-03-09T10:20:00.000Z",
+        }),
+        makeThread({
+          id: ThreadId.makeUnsafe("independent-worker"),
+          role: "worker",
+          managerThreadId: null,
+          updatedAt: "2026-03-09T10:10:00.000Z",
+        }),
+      ],
+      "updated_at",
+    );
+
+    expect(grouped.managerThreadIds).toEqual([
+      ThreadId.makeUnsafe("manager-a"),
+      ThreadId.makeUnsafe("manager-b"),
+    ]);
+    expect(grouped.orderedThreads.map((thread) => thread.id)).toEqual([
+      ThreadId.makeUnsafe("manager-a"),
+      ThreadId.makeUnsafe("worker-under-manager-a"),
+      ThreadId.makeUnsafe("manager-b"),
+      ThreadId.makeUnsafe("worker-under-manager-b"),
+      ThreadId.makeUnsafe("independent-worker"),
+    ]);
+    expect(grouped.managerWorkerIdsByManagerId.get(ThreadId.makeUnsafe("manager-a"))).toEqual([
+      ThreadId.makeUnsafe("worker-under-manager-a"),
+    ]);
+    expect(grouped.managerWorkerIdsByManagerId.get(ThreadId.makeUnsafe("manager-b"))).toEqual([
+      ThreadId.makeUnsafe("worker-under-manager-b"),
     ]);
   });
 });

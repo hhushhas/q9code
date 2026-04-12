@@ -15,7 +15,6 @@ import { OrchestrationCommandInvariantError } from "./Errors.ts";
 import {
   requireProject,
   findThreadById,
-  listThreadsByProjectId,
   requireProjectAbsent,
   requireThread,
   requireThreadArchived,
@@ -278,16 +277,6 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
             detail: "Manager threads cannot reference another manager thread.",
           });
         }
-
-        const existingManager = listThreadsByProjectId(readModel, command.projectId).find(
-          (thread) => thread.deletedAt === null && (thread.role ?? "worker") === "manager",
-        );
-        if (existingManager) {
-          return yield* new OrchestrationCommandInvariantError({
-            commandType: command.type,
-            detail: `Project '${command.projectId}' already has manager thread '${existingManager.id}'.`,
-          });
-        }
       }
 
       if (role !== "manager" && managerThreadId !== null) {
@@ -317,6 +306,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           ? buildManagerScratchpad({
               workspaceRoot: project.workspaceRoot,
               managerTitle: title,
+              managerThreadId: command.threadId,
             })
           : null;
 
@@ -445,6 +435,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           ? buildManagerScratchpad({
               workspaceRoot: project.workspaceRoot,
               managerTitle: nextTitle,
+              managerThreadId: thread.id,
             })
           : undefined;
       return {

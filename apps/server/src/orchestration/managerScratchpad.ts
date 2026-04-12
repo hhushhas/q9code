@@ -16,11 +16,14 @@ export function slugifyScratchpadSegment(value: string): string {
 export function buildManagerScratchpad(input: {
   workspaceRoot: string;
   managerTitle: string;
+  managerThreadId: ThreadId;
 }): OrchestrationThreadManagerScratchpad {
+  const managerTitleSlug = slugifyScratchpadSegment(input.managerTitle);
+  const managerThreadSlug = slugifyScratchpadSegment(input.managerThreadId);
   const folderPath = path.join(
     input.workspaceRoot,
     "scratchpad",
-    slugifyScratchpadSegment(input.managerTitle),
+    `${managerTitleSlug}-${managerThreadSlug}`,
   );
 
   return {

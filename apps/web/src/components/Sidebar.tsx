@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 import {
   type Dispatch,
+  Fragment,
   type KeyboardEvent,
   type MouseEvent,
   type MutableRefObject,
@@ -97,6 +98,7 @@ import {
   getVisibleSidebarThreadIds,
   getVisibleThreadsForProject,
   isContextMenuPointerDown,
+  organizeProjectThreadsForSidebar,
   orderItemsByPreferredIds,
   resolveAdjacentThreadId,
   resolveProjectStatusIndicator,
@@ -853,19 +855,24 @@ export default function Sidebar() {
   );
 
   const createOrOpenManagerThread = useCallback(
-    async (project: Project) => {
+    async (project: Project, input: { preferExisting?: boolean } = {}) => {
       const api = readNativeApi();
       if (!api) {
         return;
       }
 
-      const existingManagerThread = (threadIdsByProjectId[project.id] ?? [])
-        .map((threadId) => sidebarThreadsById[threadId])
-        .find(
-          (thread): thread is NonNullable<typeof thread> =>
-            thread !== undefined && thread.role === "manager",
-        );
-      if (existingManagerThread) {
+      const { preferExisting = true } = input;
+      const managerThreads = sortThreadsForSidebar(
+        (threadIdsByProjectId[project.id] ?? [])
+          .map((threadId) => sidebarThreadsById[threadId])
+          .filter(
+            (thread): thread is NonNullable<typeof thread> =>
+              thread !== undefined && thread.role === "manager",
+          ),
+        appSettings.sidebarThreadSortOrder,
+      );
+      const existingManagerThread = managerThreads[0] ?? null;
+      if (preferExisting && existingManagerThread) {
         try {
           if (existingManagerThread.interactionMode !== MANAGER_INTERACTION_MODE) {
             await api.orchestration.dispatchCommand({
@@ -923,6 +930,7 @@ export default function Sidebar() {
       }
     },
     [
+      appSettings.sidebarThreadSortOrder,
       clearSelection,
       navigate,
       selectedThreadIds.size,
@@ -1470,21 +1478,9 @@ export default function Sidebar() {
           .filter((thread): thread is NonNullable<typeof thread> => thread !== undefined)
           .filter((thread) => thread.archivedAt === null);
 
-        const managerThread = projectThreads.find((thread) => thread.role === "manager");
-        const workerThreads = projectThreads.filter(
-          (thread) => thread.role === "worker" && thread.managerThreadId === managerThread?.id,
-        );
-        const independentThreads = projectThreads.filter(
-          (thread) => thread.id !== managerThread?.id && !workerThreads.includes(thread),
-        );
-
-        const orderedThreads = [
-          ...(managerThread ? [managerThread] : []),
-          ...sortThreadsForSidebar(workerThreads, appSettings.sidebarThreadSortOrder),
-          ...sortThreadsForSidebar(independentThreads, appSettings.sidebarThreadSortOrder),
-        ];
-
-        const managerThreadId = managerThread?.id ?? null;
+        const { orderedThreads, managerThreadIds, managerWorkerIdsByManagerId } =
+          organizeProjectThreadsForSidebar(projectThreads, appSettings.sidebarThreadSortOrder);
+        const managerThreadCount = managerThreadIds.length;
         const projectStatus = resolveProjectStatusIndicator(
           orderedThreads.map((thread) => resolveProjectThreadStatus(thread)),
         );
@@ -1517,10 +1513,12 @@ export default function Sidebar() {
         return {
           hasHiddenThreads,
           hiddenThreadStatus,
+          managerThreadCount,
+          managerThreadIds,
+          managerWorkerIdsByManagerId,
           orderedProjectThreadIds,
           project,
           projectStatus,
-          managerThreadId,
           renderedThreadIds,
           showEmptyThreadState,
           shouldShowThreadPanel,
@@ -1663,32 +1661,30 @@ export default function Sidebar() {
     const {
       hasHiddenThreads,
       hiddenThreadStatus,
+      managerThreadCount,
+      managerThreadIds,
+      managerWorkerIdsByManagerId,
       orderedProjectThreadIds,
       project,
       projectStatus,
-      managerThreadId,
       renderedThreadIds,
       showEmptyThreadState,
       shouldShowThreadPanel,
       isThreadListExpanded,
     } = renderedProject;
-    const visibleManagerThreadId =
-      managerThreadId && renderedThreadIds.includes(managerThreadId) ? managerThreadId : null;
-    const nestedWorkerThreadIds = visibleManagerThreadId
-      ? renderedThreadIds.filter(
-          (threadId) => sidebarThreadsById[threadId]?.managerThreadId === visibleManagerThreadId,
-        )
-      : [];
-    const topLevelThreadIds = renderedThreadIds.filter((threadId) => {
-      if (threadId === visibleManagerThreadId) {
-        return false;
+    const renderedThreadIdSet = new Set(renderedThreadIds);
+    const nestedWorkerThreadIdSet = new Set<ThreadId>();
+    for (const managerThreadId of managerThreadIds) {
+      const workerThreadIds = managerWorkerIdsByManagerId.get(managerThreadId) ?? [];
+      for (const workerThreadId of workerThreadIds) {
+        if (renderedThreadIdSet.has(workerThreadId)) {
+          nestedWorkerThreadIdSet.add(workerThreadId);
+        }
       }
-      const thread = sidebarThreadsById[threadId];
-      if (!thread) {
-        return true;
-      }
-      return thread.managerThreadId !== visibleManagerThreadId;
-    });
+    }
+    const topLevelThreadIds = renderedThreadIds.filter(
+      (threadId) => !nestedWorkerThreadIdSet.has(threadId),
+    );
 
     const renderThreadRow = (threadId: ThreadId) => (
       <SidebarThreadRow
@@ -1779,8 +1775,8 @@ export default function Sidebar() {
                     <button
                       type="button"
                       aria-label={
-                        managerThreadId
-                          ? `Open project manager for ${project.name}`
+                        managerThreadCount > 0
+                          ? `Create another project manager for ${project.name}`
                           : `Create project manager for ${project.name}`
                       }
                       data-testid="project-manager-button"
@@ -1791,7 +1787,7 @@ export default function Sidebar() {
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
-                    void createOrOpenManagerThread(project);
+                    void createOrOpenManagerThread(project, { preferExisting: false });
                   }}
                 >
                   <BotIcon className="size-3.5" />
@@ -1799,7 +1795,7 @@ export default function Sidebar() {
               }
             />
             <TooltipPopup side="top">
-              {managerThreadId ? "Open manager" : "Create manager"}
+              {managerThreadCount > 0 ? "New manager" : "Create manager"}
             </TooltipPopup>
           </Tooltip>
         </div>
@@ -1818,15 +1814,27 @@ export default function Sidebar() {
               </div>
             </SidebarMenuSubItem>
           ) : null}
-          {shouldShowThreadPanel && visibleManagerThreadId
-            ? renderThreadRow(visibleManagerThreadId)
-            : null}
-          {shouldShowThreadPanel && nestedWorkerThreadIds.length > 0 ? (
-            <SidebarMenuSub className="ml-3 w-full gap-0.5 border-l border-border/60 pl-2">
-              {nestedWorkerThreadIds.map(renderThreadRow)}
-            </SidebarMenuSub>
-          ) : null}
-          {shouldShowThreadPanel && topLevelThreadIds.map(renderThreadRow)}
+          {shouldShowThreadPanel &&
+            topLevelThreadIds.map((threadId) => {
+              const thread = sidebarThreadsById[threadId];
+              const nestedWorkerThreadIds =
+                thread?.role === "manager"
+                  ? (managerWorkerIdsByManagerId.get(threadId) ?? []).filter((workerThreadId) =>
+                      renderedThreadIdSet.has(workerThreadId),
+                    )
+                  : [];
+
+              return (
+                <Fragment key={threadId}>
+                  {renderThreadRow(threadId)}
+                  {nestedWorkerThreadIds.length > 0 ? (
+                    <SidebarMenuSub className="ml-3 w-full gap-0.5 border-l border-border/60 pl-2">
+                      {nestedWorkerThreadIds.map(renderThreadRow)}
+                    </SidebarMenuSub>
+                  ) : null}
+                </Fragment>
+              );
+            })}
 
           {project.expanded && hasHiddenThreads && !isThreadListExpanded && (
             <SidebarMenuSubItem className="w-full">
