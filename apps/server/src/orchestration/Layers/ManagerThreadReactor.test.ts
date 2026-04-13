@@ -24,6 +24,7 @@ import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ManagerThreadReactorLive } from "./ManagerThreadReactor.ts";
 import { ManagerThreadReactor } from "../Services/ManagerThreadReactor.ts";
+import { checkpointRefForThreadTurn } from "../../checkpointing/Utils.ts";
 
 const asProjectId = (value: string) => value as never;
 const asMessageId = (value: string) => MessageId.makeUnsafe(value);
@@ -1089,6 +1090,448 @@ describe("ManagerThreadReactor", () => {
     expect(
       (manager?.activities ?? []).some((activity) => activity.kind === "manager.worker.input.mode"),
     ).toBe(true);
+  });
+
+  it("reuses the same worker thread when a manager delegation reply follows up an existing worker id", async () => {
+    const harness = await createHarness();
+    const createdAt = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-manager-turn-start-follow-up-reuse"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        message: {
+          messageId: asMessageId("user-message-manager-follow-up-reuse"),
+          role: "user",
+          text: "Launch one worker, then continue it on the same thread.",
+          attachments: [],
+        },
+        interactionMode: "plan",
+        runtimeMode: "full-access",
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.makeUnsafe("cmd-manager-assistant-delta-follow-up-reuse-1"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        messageId: asMessageId("assistant-message-manager-follow-up-reuse-1"),
+        delta: [
+          "Launching the worker first.",
+          "<manager_delegation>",
+          JSON.stringify({
+            summary: "Start the worker.",
+            workers: [
+              {
+                id: "implement",
+                title: "Implement worker",
+                prompt: "Please reply with exactly: bye",
+              },
+            ],
+          }),
+          "</manager_delegation>",
+        ].join("\n"),
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.complete",
+        commandId: CommandId.makeUnsafe("cmd-manager-assistant-complete-follow-up-reuse-1"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        messageId: asMessageId("assistant-message-manager-follow-up-reuse-1"),
+        createdAt,
+      }),
+    );
+
+    await waitFor(async () => {
+      const readModel = await Effect.runPromise(harness.engine.getReadModel());
+      const manager = readModel.threads.find(
+        (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+      );
+      return (manager?.activities ?? []).some(
+        (activity) => activity.kind === "manager.worker.launched",
+      );
+    });
+
+    const firstReadModel = await Effect.runPromise(harness.engine.getReadModel());
+    const managerAfterLaunch = firstReadModel.threads.find(
+      (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+    );
+    const launchActivity = (managerAfterLaunch?.activities ?? []).find(
+      (activity) => activity.kind === "manager.worker.launched",
+    );
+    const workerThreadId = (launchActivity?.payload as { workerThreadId?: ThreadId } | undefined)
+      ?.workerThreadId;
+    expect(workerThreadId).toBeDefined();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.makeUnsafe("cmd-manager-assistant-delta-follow-up-reuse-2"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        messageId: asMessageId("assistant-message-manager-follow-up-reuse-2"),
+        delta: [
+          "Continue the same worker.",
+          "<manager_delegation>",
+          JSON.stringify({
+            summary: "Reuse the existing worker thread.",
+            workers: [
+              {
+                id: "implement",
+                title: "Implement worker",
+                prompt: "What instruction did you previously receive?",
+              },
+            ],
+          }),
+          "</manager_delegation>",
+        ].join("\n"),
+        createdAt: new Date(Date.now() + 500).toISOString(),
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.complete",
+        commandId: CommandId.makeUnsafe("cmd-manager-assistant-complete-follow-up-reuse-2"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        messageId: asMessageId("assistant-message-manager-follow-up-reuse-2"),
+        createdAt: new Date(Date.now() + 500).toISOString(),
+      }),
+    );
+
+    const beforeSettlementEvents = (await Effect.runPromise(
+      Stream.runCollect(harness.engine.readEvents(0)).pipe(
+        Effect.map((entries) => Array.from(entries) as Array<{ type: string; payload: any }>),
+      ),
+    )) as Array<{ type: string; payload: any }>;
+    expect(
+      beforeSettlementEvents.filter(
+        (event) =>
+          event.type === "thread.created" &&
+          event.payload.threadId !== ThreadId.makeUnsafe("thread-manager"),
+      ),
+    ).toHaveLength(1);
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.makeUnsafe("cmd-thread-session-set-follow-up-reuse-ready"),
+        threadId: workerThreadId!,
+        session: {
+          threadId: workerThreadId!,
+          status: "ready",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: new Date(Date.now() + 1_000).toISOString(),
+        },
+        createdAt: new Date(Date.now() + 1_000).toISOString(),
+      }),
+    );
+
+    await waitFor(async () => {
+      const readModel = await Effect.runPromise(harness.engine.getReadModel());
+      const worker = readModel.threads.find((thread) => thread.id === workerThreadId);
+      return (
+        worker?.messages
+          .filter((message) => message.role === "user")
+          .some((message) => message.text === "What instruction did you previously receive?") ??
+        false
+      );
+    });
+
+    const readModel = await Effect.runPromise(harness.engine.getReadModel());
+    const workerThreads = readModel.threads.filter(
+      (thread) => thread.managerThreadId === ThreadId.makeUnsafe("thread-manager"),
+    );
+    expect(workerThreads).toHaveLength(1);
+    const worker = workerThreads[0];
+    expect(worker?.id).toBe(workerThreadId);
+    expect(
+      worker?.messages.filter((message) => message.role === "user").map((message) => message.text),
+    ).toEqual(["Please reply with exactly: bye", "What instruction did you previously receive?"]);
+
+    const manager = readModel.threads.find(
+      (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+    );
+    expect(
+      (manager?.activities ?? []).filter((activity) => activity.kind === "manager.worker.launched"),
+    ).toHaveLength(1);
+    expect(
+      (manager?.activities ?? []).some(
+        (activity) =>
+          activity.kind === "manager.worker.input.sent" &&
+          (activity.payload as { workerThreadId?: ThreadId } | undefined)?.workerThreadId ===
+            workerThreadId,
+      ),
+    ).toBe(true);
+  });
+
+  it("waits for a running worker to settle before dispatching queued follow-up input", async () => {
+    const harness = await createHarness();
+    const createdAt = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.makeUnsafe("cmd-thread-create-worker-manager-queue-running"),
+        threadId: ThreadId.makeUnsafe("thread-worker-queue-running"),
+        projectId: asProjectId("project-1"),
+        title: "Running worker",
+        modelSelection: {
+          provider: "codex",
+          model: "gpt-5.4",
+        },
+        role: "worker",
+        managerThreadId: ThreadId.makeUnsafe("thread-manager"),
+        interactionMode: "default",
+        runtimeMode: "full-access",
+        branch: null,
+        worktreePath: null,
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.makeUnsafe("cmd-thread-session-set-worker-manager-queue-running"),
+        threadId: ThreadId.makeUnsafe("thread-worker-queue-running"),
+        session: {
+          threadId: ThreadId.makeUnsafe("thread-worker-queue-running"),
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: TurnId.makeUnsafe("turn-worker-queue-running"),
+          lastError: null,
+          updatedAt: createdAt,
+        },
+        createdAt,
+      }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "manager.worker.input.send",
+        commandId: CommandId.makeUnsafe("cmd-manager-worker-queue-running-send"),
+        managerThreadId: ThreadId.makeUnsafe("thread-manager"),
+        workerThreadId: ThreadId.makeUnsafe("thread-worker-queue-running"),
+        input: {
+          messageId: asMessageId("msg-manager-worker-queue-running"),
+          text: "Continue after the current step finishes.",
+          attachments: [],
+        },
+        mode: "queue",
+        createdAt,
+      }),
+    );
+
+    const eventsBeforeSettlement = (await Effect.runPromise(
+      Stream.runCollect(harness.engine.readEvents(0)).pipe(
+        Effect.map((entries) => Array.from(entries) as Array<{ type: string; payload: any }>),
+      ),
+    )) as Array<{ type: string; payload: any }>;
+    expect(
+      eventsBeforeSettlement.some(
+        (event) =>
+          event.type === "thread.turn-start-requested" &&
+          event.payload.threadId === ThreadId.makeUnsafe("thread-worker-queue-running") &&
+          event.payload.messageId === asMessageId("msg-manager-worker-queue-running"),
+      ),
+    ).toBe(false);
+    expect(
+      eventsBeforeSettlement.some(
+        (event) =>
+          event.type === "thread.turn-interrupt-requested" &&
+          event.payload.threadId === ThreadId.makeUnsafe("thread-worker-queue-running"),
+      ),
+    ).toBe(false);
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.makeUnsafe(
+          "cmd-thread-session-set-worker-manager-queue-running-ready",
+        ),
+        threadId: ThreadId.makeUnsafe("thread-worker-queue-running"),
+        session: {
+          threadId: ThreadId.makeUnsafe("thread-worker-queue-running"),
+          status: "ready",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: new Date(Date.now() + 1_000).toISOString(),
+        },
+        createdAt: new Date(Date.now() + 1_000).toISOString(),
+      }),
+    );
+
+    await waitFor(async () => {
+      const events = (await Effect.runPromise(
+        Stream.runCollect(harness.engine.readEvents(0)).pipe(
+          Effect.map((entries) => Array.from(entries) as Array<{ type: string; payload: any }>),
+        ),
+      )) as Array<{ type: string; payload: any }>;
+      return events.some(
+        (event) =>
+          event.type === "thread.turn-start-requested" &&
+          event.payload.threadId === ThreadId.makeUnsafe("thread-worker-queue-running") &&
+          event.payload.messageId === asMessageId("msg-manager-worker-queue-running"),
+      );
+    });
+
+    const events = (await Effect.runPromise(
+      Stream.runCollect(harness.engine.readEvents(0)).pipe(
+        Effect.map((entries) => Array.from(entries) as Array<{ type: string; payload: any }>),
+      ),
+    )) as Array<{ type: string; payload: any }>;
+    expect(
+      events.some(
+        (event) =>
+          event.type === "thread.turn-interrupt-requested" &&
+          event.payload.threadId === ThreadId.makeUnsafe("thread-worker-queue-running"),
+      ),
+    ).toBe(false);
+  });
+
+  it("flushes queued follow-up input once a ready worker finishes diff completion", async () => {
+    const harness = await createHarness();
+    const createdAt = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.makeUnsafe("cmd-thread-create-worker-manager-queue-ready"),
+        threadId: ThreadId.makeUnsafe("thread-worker-queue-ready"),
+        projectId: asProjectId("project-1"),
+        title: "Ready worker",
+        modelSelection: {
+          provider: "codex",
+          model: "gpt-5.4",
+        },
+        role: "worker",
+        managerThreadId: ThreadId.makeUnsafe("thread-manager"),
+        interactionMode: "default",
+        runtimeMode: "full-access",
+        branch: null,
+        worktreePath: null,
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.makeUnsafe(
+          "cmd-thread-session-set-worker-manager-queue-ready-running",
+        ),
+        threadId: ThreadId.makeUnsafe("thread-worker-queue-ready"),
+        session: {
+          threadId: ThreadId.makeUnsafe("thread-worker-queue-ready"),
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: TurnId.makeUnsafe("turn-worker-queue-ready"),
+          lastError: null,
+          updatedAt: createdAt,
+        },
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.makeUnsafe("cmd-thread-session-set-worker-manager-queue-ready"),
+        threadId: ThreadId.makeUnsafe("thread-worker-queue-ready"),
+        session: {
+          threadId: ThreadId.makeUnsafe("thread-worker-queue-ready"),
+          status: "ready",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: createdAt,
+        },
+        createdAt,
+      }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "manager.worker.input.send",
+        commandId: CommandId.makeUnsafe("cmd-manager-worker-queue-ready-send"),
+        managerThreadId: ThreadId.makeUnsafe("thread-manager"),
+        workerThreadId: ThreadId.makeUnsafe("thread-worker-queue-ready"),
+        input: {
+          messageId: asMessageId("msg-manager-worker-queue-ready"),
+          text: "Now continue with the follow-up task.",
+          attachments: [],
+        },
+        mode: "queue",
+        createdAt,
+      }),
+    );
+
+    const eventsBeforeDiffCompletion = (await Effect.runPromise(
+      Stream.runCollect(harness.engine.readEvents(0)).pipe(
+        Effect.map((entries) => Array.from(entries) as Array<{ type: string; payload: any }>),
+      ),
+    )) as Array<{ type: string; payload: any }>;
+    expect(
+      eventsBeforeDiffCompletion.some(
+        (event) =>
+          event.type === "thread.turn-start-requested" &&
+          event.payload.threadId === ThreadId.makeUnsafe("thread-worker-queue-ready") &&
+          event.payload.messageId === asMessageId("msg-manager-worker-queue-ready"),
+      ),
+    ).toBe(false);
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.diff.complete",
+        commandId: CommandId.makeUnsafe("cmd-thread-turn-diff-complete-worker-manager-queue-ready"),
+        threadId: ThreadId.makeUnsafe("thread-worker-queue-ready"),
+        turnId: TurnId.makeUnsafe("turn-worker-queue-ready"),
+        checkpointTurnCount: 1,
+        checkpointRef: checkpointRefForThreadTurn(
+          ThreadId.makeUnsafe("thread-worker-queue-ready"),
+          1,
+        ),
+        status: "ready",
+        files: [],
+        completedAt: new Date(Date.now() + 1_000).toISOString(),
+        createdAt: new Date(Date.now() + 1_000).toISOString(),
+      }),
+    );
+
+    await waitFor(async () => {
+      const events = (await Effect.runPromise(
+        Stream.runCollect(harness.engine.readEvents(0)).pipe(
+          Effect.map((entries) => Array.from(entries) as Array<{ type: string; payload: any }>),
+        ),
+      )) as Array<{ type: string; payload: any }>;
+      return events.some(
+        (event) =>
+          event.type === "thread.turn-start-requested" &&
+          event.payload.threadId === ThreadId.makeUnsafe("thread-worker-queue-ready") &&
+          event.payload.messageId === asMessageId("msg-manager-worker-queue-ready"),
+      );
+    });
+
+    const events = (await Effect.runPromise(
+      Stream.runCollect(harness.engine.readEvents(0)).pipe(
+        Effect.map((entries) => Array.from(entries) as Array<{ type: string; payload: any }>),
+      ),
+    )) as Array<{ type: string; payload: any }>;
+    expect(
+      events.some(
+        (event) =>
+          event.type === "thread.turn-interrupt-requested" &&
+          event.payload.threadId === ThreadId.makeUnsafe("thread-worker-queue-ready"),
+      ),
+    ).toBe(false);
   });
 
   it("queues manager follow-up input for non-running workers without emitting an interrupt", async () => {

@@ -141,6 +141,42 @@ const seedProjectAndThread = (harness: OrchestrationIntegrationHarness) =>
     });
   });
 
+const seedProjectAndManagerThread = (harness: OrchestrationIntegrationHarness) =>
+  Effect.gen(function* () {
+    const createdAt = nowIso();
+
+    yield* harness.engine.dispatch({
+      type: "project.create",
+      commandId: CommandId.makeUnsafe("cmd-project-create-manager"),
+      projectId: PROJECT_ID,
+      title: "Integration Project",
+      workspaceRoot: harness.workspaceDir,
+      defaultModelSelection: {
+        provider: "codex",
+        model: DEFAULT_MODEL_BY_PROVIDER.codex,
+      },
+      createdAt,
+    });
+
+    yield* harness.engine.dispatch({
+      type: "thread.create",
+      commandId: CommandId.makeUnsafe("cmd-thread-create-manager"),
+      threadId: ThreadId.makeUnsafe("thread-manager"),
+      projectId: PROJECT_ID,
+      title: "James",
+      modelSelection: {
+        provider: "codex",
+        model: DEFAULT_MODEL_BY_PROVIDER.codex,
+      },
+      role: "manager",
+      interactionMode: "default",
+      runtimeMode: "full-access",
+      branch: null,
+      worktreePath: harness.workspaceDir,
+      createdAt,
+    });
+  });
+
 const startTurn = (input: {
   readonly harness: OrchestrationIntegrationHarness;
   readonly commandId: string;
@@ -248,6 +284,195 @@ it.live("runs a single turn end-to-end and persists checkpoint state in sqlite +
       assert.equal(gitRefExists(harness.workspaceDir, ref1), true);
       assert.equal(gitShowFileAtRef(harness.workspaceDir, ref0, "README.md"), "v1\n");
       assert.equal(gitShowFileAtRef(harness.workspaceDir, ref1, "README.md"), "v1\n");
+    }),
+  ),
+);
+
+it.live("reuses the same delegated worker thread for manager follow-up input", () =>
+  withHarness((harness) =>
+    Effect.gen(function* () {
+      yield* seedProjectAndManagerThread(harness);
+
+      yield* harness.adapterHarness!.queueTurnResponseForNextSession({
+        events: [
+          {
+            type: "turn.started",
+            ...runtimeBase("evt-manager-worker-follow-up-1-start", "2026-02-24T10:00:00.000Z"),
+            threadId: ThreadId.makeUnsafe("placeholder-worker-thread"),
+            turnId: FIXTURE_TURN_ID,
+          },
+          {
+            type: "message.delta",
+            ...runtimeBase("evt-manager-worker-follow-up-1-delta", "2026-02-24T10:00:00.100Z"),
+            threadId: ThreadId.makeUnsafe("placeholder-worker-thread"),
+            turnId: FIXTURE_TURN_ID,
+            delta: "bye",
+          },
+          {
+            type: "turn.completed",
+            ...runtimeBase("evt-manager-worker-follow-up-1-complete", "2026-02-24T10:00:00.200Z"),
+            threadId: ThreadId.makeUnsafe("placeholder-worker-thread"),
+            turnId: FIXTURE_TURN_ID,
+            status: "completed",
+          },
+        ],
+      });
+
+      yield* harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.makeUnsafe("cmd-manager-assistant-delta-follow-up-worker-1"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        messageId: asMessageId("assistant-message-manager-follow-up-worker-1"),
+        delta: [
+          "Launching the worker.",
+          "<manager_delegation>",
+          JSON.stringify({
+            summary: "Initial worker launch.",
+            workers: [
+              {
+                id: "implement",
+                title: "Implement worker",
+                prompt: "Please reply with exactly: bye",
+              },
+            ],
+          }),
+          "</manager_delegation>",
+        ].join("\n"),
+        createdAt: nowIso(),
+      });
+      yield* harness.engine.dispatch({
+        type: "thread.message.assistant.complete",
+        commandId: CommandId.makeUnsafe("cmd-manager-assistant-complete-follow-up-worker-1"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        messageId: asMessageId("assistant-message-manager-follow-up-worker-1"),
+        createdAt: nowIso(),
+      });
+
+      const firstWorkerThread = yield* harness
+        .waitForThread(ThreadId.makeUnsafe("thread-manager"), (entry) =>
+          entry.activities.some((activity) => activity.kind === "manager.worker.launched"),
+        )
+        .pipe(
+          Effect.flatMap((managerThread) => {
+            const launchActivity = managerThread.activities.find(
+              (activity) => activity.kind === "manager.worker.launched",
+            );
+            const workerThreadId = (
+              launchActivity?.payload as { workerThreadId?: ThreadId } | undefined
+            )?.workerThreadId;
+            if (!workerThreadId) {
+              return Effect.die(new Error("Expected launched worker thread id."));
+            }
+            return harness.waitForThread(
+              workerThreadId,
+              (thread) =>
+                thread.session?.status === "ready" &&
+                thread.messages.some(
+                  (message) => message.role === "assistant" && message.text.includes("bye"),
+                ),
+            );
+          }),
+        );
+
+      yield* harness.adapterHarness!.queueTurnResponse(firstWorkerThread.id, {
+        events: [
+          {
+            type: "turn.started",
+            ...runtimeBase("evt-manager-worker-follow-up-2-start", "2026-02-24T10:00:01.000Z"),
+            threadId: firstWorkerThread.id,
+            turnId: FIXTURE_TURN_ID,
+          },
+          {
+            type: "message.delta",
+            ...runtimeBase("evt-manager-worker-follow-up-2-delta", "2026-02-24T10:00:01.100Z"),
+            threadId: firstWorkerThread.id,
+            turnId: FIXTURE_TURN_ID,
+            delta: "The earlier instruction was: Please reply with exactly: bye",
+          },
+          {
+            type: "turn.completed",
+            ...runtimeBase("evt-manager-worker-follow-up-2-complete", "2026-02-24T10:00:01.200Z"),
+            threadId: firstWorkerThread.id,
+            turnId: FIXTURE_TURN_ID,
+            status: "completed",
+          },
+        ],
+      });
+
+      yield* harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.makeUnsafe("cmd-manager-assistant-delta-follow-up-worker-2"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        messageId: asMessageId("assistant-message-manager-follow-up-worker-2"),
+        delta: [
+          "Continuing the same worker.",
+          "<manager_delegation>",
+          JSON.stringify({
+            summary: "Same worker follow-up.",
+            workers: [
+              {
+                id: "implement",
+                title: "Implement worker",
+                prompt: "What instruction did you previously receive?",
+              },
+            ],
+          }),
+          "</manager_delegation>",
+        ].join("\n"),
+        createdAt: nowIso(),
+      });
+      yield* harness.engine.dispatch({
+        type: "thread.message.assistant.complete",
+        commandId: CommandId.makeUnsafe("cmd-manager-assistant-complete-follow-up-worker-2"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        messageId: asMessageId("assistant-message-manager-follow-up-worker-2"),
+        createdAt: nowIso(),
+      });
+
+      const workerThreadAfterFollowUp = yield* harness.waitForThread(
+        firstWorkerThread.id,
+        (thread) =>
+          thread.session?.status === "ready" &&
+          thread.messages.filter((message) => message.role === "user").length === 2 &&
+          thread.messages.some(
+            (message) =>
+              message.role === "assistant" &&
+              message.text.includes("Please reply with exactly: bye"),
+          ),
+        20_000,
+      );
+
+      const snapshot = yield* harness.snapshotQuery.getSnapshot();
+      const workerThreads = snapshot.threads.filter(
+        (thread) => thread.managerThreadId === ThreadId.makeUnsafe("thread-manager"),
+      );
+      assert.equal(workerThreads.length, 1);
+      assert.equal(workerThreads[0]?.id, firstWorkerThread.id);
+      assert.equal(harness.adapterHarness!.getStartCount(), 1);
+      assert.deepEqual(
+        workerThreadAfterFollowUp.messages
+          .filter((message) => message.role === "user")
+          .map((message) => message.text),
+        ["Please reply with exactly: bye", "What instruction did you previously receive?"],
+      );
+
+      const managerThread = snapshot.threads.find(
+        (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+      );
+      assert.equal(
+        managerThread?.activities.filter((activity) => activity.kind === "manager.worker.launched")
+          .length,
+        1,
+      );
+      assert.equal(
+        managerThread?.activities.some(
+          (activity) =>
+            activity.kind === "manager.worker.input.sent" &&
+            (activity.payload as { workerThreadId?: ThreadId } | undefined)?.workerThreadId ===
+              firstWorkerThread.id,
+        ),
+        true,
+      );
     }),
   ),
 );

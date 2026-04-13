@@ -146,6 +146,15 @@ function parseManagerWorkerMetadata(value: unknown): ManagerWorkerMetadata | nul
   };
 }
 
+function isWorkerTurnInFlight(thread: OrchestrationThread): boolean {
+  return (
+    thread.session?.status === "running" ||
+    thread.session?.status === "starting" ||
+    thread.session?.activeTurnId !== null ||
+    (thread.latestTurn !== null && thread.latestTurn.completedAt === null)
+  );
+}
+
 const make = Effect.gen(function* () {
   const orchestrationEngine = yield* OrchestrationEngineService;
   const fileSystem = yield* FileSystem.FileSystem;
@@ -322,6 +331,68 @@ const make = Effect.gen(function* () {
       }
     }
     return null;
+  };
+
+  const resolveReusableWorkerRuntimeStates = (
+    managerThread: OrchestrationThread,
+    readModel: OrchestrationReadModel,
+  ) => {
+    const runtimeStates: Record<
+      string,
+      {
+        readonly threadId: ThreadId;
+        readonly state: "running" | "blocked" | "completed" | "failed";
+      }
+    > = {};
+
+    for (const activity of [...managerThread.activities].toReversed()) {
+      const metadata = parseManagerWorkerMetadata(activity.payload);
+      const payload = asObjectRecord(activity.payload);
+      if (
+        !metadata ||
+        runtimeStates[metadata.workerId] !== undefined ||
+        typeof payload?.workerThreadId !== "string"
+      ) {
+        continue;
+      }
+
+      const workerThread =
+        readModel.threads.find(
+          (thread) =>
+            thread.id === payload.workerThreadId &&
+            thread.managerThreadId === managerThread.id &&
+            thread.deletedAt === null,
+        ) ?? null;
+      if (!workerThread) {
+        continue;
+      }
+
+      const state = (() => {
+        if (isWorkerTurnInFlight(workerThread)) {
+          return "running" as const;
+        }
+        switch (activity.kind) {
+          case "manager.worker.blocked":
+          case "manager.worker.needs-approval":
+          case "manager.worker.needs-input":
+            return "blocked" as const;
+          case "manager.worker.failed":
+            return "failed" as const;
+          default:
+            if (workerThread.session?.status === "error") {
+              return "failed" as const;
+            }
+            return "completed" as const;
+        }
+      })();
+
+      runtimeStates[metadata.workerId] = {
+        threadId: workerThread.id,
+        state,
+      };
+    }
+
+    return runtimeStates;
   };
 
   const enqueuePendingManagerWorkerInput = (input: PendingManagerWorkerInput) => {
@@ -690,12 +761,33 @@ const make = Effect.gen(function* () {
     readonly createdAt: string;
   }) {
     return Effect.gen(function* () {
+      const readModel = yield* orchestrationEngine.getReadModel();
+      const runtimeStates = resolveReusableWorkerRuntimeStates(input.managerThread, readModel);
       const snapshots = resolveManagerDelegationSnapshots({
         manifest: input.manifest,
+        runtimeStates,
       });
 
       for (const worker of input.manifest.workers) {
         const snapshot = snapshots.find((entry) => entry.workerId === worker.id);
+        const reusableRuntimeState = runtimeStates[worker.id];
+        if (reusableRuntimeState?.threadId) {
+          yield* orchestrationEngine.dispatch({
+            type: "manager.worker.input.send",
+            commandId: serverCommandId("manager-worker-follow-up"),
+            managerThreadId: input.managerThread.id,
+            workerThreadId: reusableRuntimeState.threadId,
+            input: {
+              messageId: MessageId.makeUnsafe(crypto.randomUUID()),
+              text: worker.prompt,
+              attachments: [],
+            },
+            mode: "queue",
+            createdAt: input.createdAt,
+          });
+          continue;
+        }
+
         if (snapshot?.state === "ready") {
           yield* launchWorkerThread({
             managerThread: input.managerThread,
@@ -794,12 +886,10 @@ const make = Effect.gen(function* () {
         return;
       }
 
-      const workerIsRunning =
-        workerThread.session?.status === "running" ||
-        (workerThread.latestTurn !== null && workerThread.latestTurn.completedAt === null);
+      const workerIsRunning = isWorkerTurnInFlight(workerThread);
       const shouldInterrupt = event.payload.mode === "interrupt" && workerIsRunning;
 
-      if (shouldInterrupt) {
+      if (workerIsRunning) {
         enqueuePendingManagerWorkerInput({
           managerThreadId: managerContext.thread.id,
           workerThreadId: workerThread.id,
@@ -809,16 +899,18 @@ const make = Effect.gen(function* () {
           requestedMode: event.payload.mode,
           createdAt: event.payload.createdAt,
         });
-        yield* orchestrationEngine.dispatch({
-          type: "thread.turn.interrupt",
-          commandId: serverCommandId("manager-worker-turn-interrupt"),
-          threadId: workerThread.id,
-          ...(workerThread.session?.activeTurnId !== null &&
-          workerThread.session?.activeTurnId !== undefined
-            ? { turnId: workerThread.session.activeTurnId }
-            : {}),
-          createdAt: event.payload.createdAt,
-        });
+        if (shouldInterrupt) {
+          yield* orchestrationEngine.dispatch({
+            type: "thread.turn.interrupt",
+            commandId: serverCommandId("manager-worker-turn-interrupt"),
+            threadId: workerThread.id,
+            ...(workerThread.session?.activeTurnId !== null &&
+            workerThread.session?.activeTurnId !== undefined
+              ? { turnId: workerThread.session.activeTurnId }
+              : {}),
+            createdAt: event.payload.createdAt,
+          });
+        }
         return;
       }
 
@@ -1127,6 +1219,12 @@ const make = Effect.gen(function* () {
               `Files changed: ${event.payload.files.length}`,
             ],
           });
+          if (!isWorkerTurnInFlight(context.thread)) {
+            const pendingInput = shiftPendingManagerWorkerInput(context.thread.id);
+            if (pendingInput) {
+              yield* dispatchManagerWorkerInput(pendingInput);
+            }
+          }
           return;
         }
 
