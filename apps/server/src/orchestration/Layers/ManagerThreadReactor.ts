@@ -155,6 +155,48 @@ function isWorkerTurnInFlight(thread: OrchestrationThread): boolean {
   );
 }
 
+function resolveWorkerRuntimeState(
+  managerThread: OrchestrationThread,
+  workerThread: OrchestrationThread,
+): "running" | "blocked" | "completed" | "failed" {
+  if (isWorkerTurnInFlight(workerThread)) {
+    return "running";
+  }
+
+  if (
+    workerThread.activities.some((activity) => activity.kind === "approval.requested") ||
+    workerThread.activities.some((activity) => activity.kind === "user-input.requested")
+  ) {
+    return "blocked";
+  }
+
+  for (const activity of [...managerThread.activities].toReversed()) {
+    const payload = asObjectRecord(activity.payload);
+    if (payload?.workerThreadId !== workerThread.id) {
+      continue;
+    }
+
+    switch (activity.kind) {
+      case "manager.worker.blocked":
+      case "manager.worker.needs-approval":
+      case "manager.worker.needs-input":
+        return "blocked";
+      case "manager.worker.failed":
+        return "failed";
+      case "manager.worker.completed":
+        return "completed";
+      default:
+        break;
+    }
+  }
+
+  if (workerThread.session?.status === "error") {
+    return "failed";
+  }
+
+  return "completed";
+}
+
 const make = Effect.gen(function* () {
   const orchestrationEngine = yield* OrchestrationEngineService;
   const fileSystem = yield* FileSystem.FileSystem;
@@ -344,6 +386,19 @@ const make = Effect.gen(function* () {
         readonly state: "running" | "blocked" | "completed" | "failed";
       }
     > = {};
+    const managerWorkerThreads = readModel.threads.filter(
+      (thread) =>
+        thread.managerThreadId === managerThread.id &&
+        thread.deletedAt === null &&
+        thread.role !== "manager",
+    );
+
+    for (const workerThread of managerWorkerThreads) {
+      runtimeStates[workerThread.id] = {
+        threadId: workerThread.id,
+        state: resolveWorkerRuntimeState(managerThread, workerThread),
+      };
+    }
 
     for (const activity of [...managerThread.activities].toReversed()) {
       const metadata = parseManagerWorkerMetadata(activity.payload);
@@ -357,38 +412,16 @@ const make = Effect.gen(function* () {
       }
 
       const workerThread =
-        readModel.threads.find(
-          (thread) =>
-            thread.id === payload.workerThreadId &&
-            thread.managerThreadId === managerThread.id &&
-            thread.deletedAt === null,
-        ) ?? null;
+        managerWorkerThreads.find((thread) => thread.id === payload.workerThreadId) ?? null;
       if (!workerThread) {
         continue;
       }
 
-      const state = (() => {
-        if (isWorkerTurnInFlight(workerThread)) {
-          return "running" as const;
-        }
-        switch (activity.kind) {
-          case "manager.worker.blocked":
-          case "manager.worker.needs-approval":
-          case "manager.worker.needs-input":
-            return "blocked" as const;
-          case "manager.worker.failed":
-            return "failed" as const;
-          default:
-            if (workerThread.session?.status === "error") {
-              return "failed" as const;
-            }
-            return "completed" as const;
-        }
-      })();
-
       runtimeStates[metadata.workerId] = {
         threadId: workerThread.id,
-        state,
+        state:
+          runtimeStates[workerThread.id]?.state ??
+          resolveWorkerRuntimeState(managerThread, workerThread),
       };
     }
 

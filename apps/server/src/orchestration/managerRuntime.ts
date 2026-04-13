@@ -25,10 +25,38 @@ function resolveProjectTitle(readModel: OrchestrationReadModel, projectId: strin
   return readModel.projects.find((project) => project.id === projectId)?.title ?? "Project";
 }
 
+function resolveWorkerReuseId(
+  managerThread: OrchestrationThread | null,
+  workerThreadId: ThreadId,
+): string {
+  if (!managerThread) {
+    return workerThreadId;
+  }
+
+  for (const activity of [...managerThread.activities].toReversed()) {
+    const payload =
+      activity.payload && typeof activity.payload === "object"
+        ? (activity.payload as Record<string, unknown>)
+        : null;
+    if (payload?.workerThreadId !== workerThreadId) {
+      continue;
+    }
+    if (typeof payload.workerId === "string" && payload.workerId.trim().length > 0) {
+      return payload.workerId;
+    }
+  }
+
+  return workerThreadId;
+}
+
 function buildKnownWorkerSummary(
   readModel: OrchestrationReadModel,
   managerThreadId: ThreadId,
 ): string {
+  const managerThread =
+    readModel.threads.find(
+      (thread) => thread.id === managerThreadId && thread.role === "manager",
+    ) ?? null;
   const workers = readModel.threads.filter(
     (thread) => thread.deletedAt === null && thread.managerThreadId === managerThreadId,
   );
@@ -40,7 +68,8 @@ function buildKnownWorkerSummary(
     .slice(0, 12)
     .map((worker) => {
       const status = worker.session?.status ?? "idle";
-      return `- ${worker.title} (${worker.id}) status=${status}`;
+      const reuseId = resolveWorkerReuseId(managerThread, worker.id);
+      return `- ${worker.title} threadId=${worker.id} reuseId=${reuseId} status=${status}`;
     })
     .join("\n");
 }
@@ -92,6 +121,8 @@ export function buildManagerTurnInput(input: {
     "If you specify `modelSelection`, use the codex shape shown here:",
     '{"provider":"codex","model":"gpt-5.4-mini","options":{"reasoningEffort":"medium","fastMode":false}}',
     "Use stable worker ids when follow-up coordination matters, and declare `dependsOn` when later workers must wait for earlier ones.",
+    "When following up an existing worker, copy its `reuseId` from the current worker list into `workers[].id` exactly.",
+    "Do not swap in the raw `threadId` unless `reuseId` already matches it.",
     "If no worker should be launched, do not include the delegation block.",
     "Only request multiple workers when the tasks are clearly parallel and non-overlapping.",
     "Keep the human-visible part of your reply concise and managerial.",

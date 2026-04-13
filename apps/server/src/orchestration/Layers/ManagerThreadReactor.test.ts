@@ -1270,6 +1270,173 @@ describe("ManagerThreadReactor", () => {
     ).toBe(true);
   });
 
+  it("reuses the same worker thread when a manager delegation reply follows up a visible worker thread id", async () => {
+    const harness = await createHarness();
+    const createdAt = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-manager-turn-start-follow-up-thread-id-reuse"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        message: {
+          messageId: asMessageId("user-message-manager-follow-up-thread-id-reuse"),
+          role: "user",
+          text: "Launch one worker, then continue it by the visible worker id.",
+          attachments: [],
+        },
+        interactionMode: "plan",
+        runtimeMode: "full-access",
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.makeUnsafe("cmd-manager-assistant-delta-follow-up-thread-id-reuse-1"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        messageId: asMessageId("assistant-message-manager-follow-up-thread-id-reuse-1"),
+        delta: [
+          "Launching the worker first.",
+          "<manager_delegation>",
+          JSON.stringify({
+            summary: "Start the worker.",
+            workers: [
+              {
+                id: "implement-visible-id-reuse",
+                title: "Implement worker",
+                prompt: "Please reply with exactly: bye",
+              },
+            ],
+          }),
+          "</manager_delegation>",
+        ].join("\n"),
+        createdAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.complete",
+        commandId: CommandId.makeUnsafe(
+          "cmd-manager-assistant-complete-follow-up-thread-id-reuse-1",
+        ),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        messageId: asMessageId("assistant-message-manager-follow-up-thread-id-reuse-1"),
+        createdAt,
+      }),
+    );
+
+    await waitFor(async () => {
+      const readModel = await Effect.runPromise(harness.engine.getReadModel());
+      const manager = readModel.threads.find(
+        (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+      );
+      return (manager?.activities ?? []).some(
+        (activity) => activity.kind === "manager.worker.launched",
+      );
+    });
+
+    const firstReadModel = await Effect.runPromise(harness.engine.getReadModel());
+    const managerAfterLaunch = firstReadModel.threads.find(
+      (thread) => thread.id === ThreadId.makeUnsafe("thread-manager"),
+    );
+    const launchActivity = (managerAfterLaunch?.activities ?? []).find(
+      (activity) => activity.kind === "manager.worker.launched",
+    );
+    const workerThreadId = (launchActivity?.payload as { workerThreadId?: ThreadId } | undefined)
+      ?.workerThreadId;
+    expect(workerThreadId).toBeDefined();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.makeUnsafe("cmd-manager-assistant-delta-follow-up-thread-id-reuse-2"),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        messageId: asMessageId("assistant-message-manager-follow-up-thread-id-reuse-2"),
+        delta: [
+          "Continue the same worker by its visible id.",
+          "<manager_delegation>",
+          JSON.stringify({
+            summary: "Reuse the visible worker thread id.",
+            workers: [
+              {
+                id: workerThreadId,
+                title: "Implement worker",
+                prompt: "Continue from the existing thread context.",
+              },
+            ],
+          }),
+          "</manager_delegation>",
+        ].join("\n"),
+        createdAt: new Date(Date.now() + 500).toISOString(),
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.complete",
+        commandId: CommandId.makeUnsafe(
+          "cmd-manager-assistant-complete-follow-up-thread-id-reuse-2",
+        ),
+        threadId: ThreadId.makeUnsafe("thread-manager"),
+        messageId: asMessageId("assistant-message-manager-follow-up-thread-id-reuse-2"),
+        createdAt: new Date(Date.now() + 500).toISOString(),
+      }),
+    );
+
+    const beforeSettlementEvents = (await Effect.runPromise(
+      Stream.runCollect(harness.engine.readEvents(0)).pipe(
+        Effect.map((entries) => Array.from(entries) as Array<{ type: string; payload: any }>),
+      ),
+    )) as Array<{ type: string; payload: any }>;
+    expect(
+      beforeSettlementEvents.filter(
+        (event) =>
+          event.type === "thread.created" &&
+          event.payload.threadId !== ThreadId.makeUnsafe("thread-manager"),
+      ),
+    ).toHaveLength(1);
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.makeUnsafe("cmd-thread-session-set-follow-up-thread-id-reuse-ready"),
+        threadId: workerThreadId!,
+        session: {
+          threadId: workerThreadId!,
+          status: "ready",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: new Date(Date.now() + 1_000).toISOString(),
+        },
+        createdAt: new Date(Date.now() + 1_000).toISOString(),
+      }),
+    );
+
+    await waitFor(async () => {
+      const readModel = await Effect.runPromise(harness.engine.getReadModel());
+      const worker = readModel.threads.find((thread) => thread.id === workerThreadId);
+      return (
+        worker?.messages
+          .filter((message) => message.role === "user")
+          .some((message) => message.text === "Continue from the existing thread context.") ?? false
+      );
+    });
+
+    const readModel = await Effect.runPromise(harness.engine.getReadModel());
+    const workerThreads = readModel.threads.filter(
+      (thread) => thread.managerThreadId === ThreadId.makeUnsafe("thread-manager"),
+    );
+    expect(workerThreads).toHaveLength(1);
+    expect(workerThreads[0]?.id).toBe(workerThreadId);
+    expect(
+      workerThreads[0]?.messages
+        .filter((message) => message.role === "user")
+        .map((message) => message.text),
+    ).toEqual(["Please reply with exactly: bye", "Continue from the existing thread context."]);
+  });
+
   it("waits for a running worker to settle before dispatching queued follow-up input", async () => {
     const harness = await createHarness();
     const createdAt = new Date().toISOString();

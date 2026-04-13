@@ -86,6 +86,145 @@ describe("buildManagerTurnInput", () => {
     expect(result).toContain("Use `gpt-5.4` by default");
     expect(result).not.toContain('"fastMode":true');
   });
+
+  it("surfaces the reusable worker identity for follow-up coordination", () => {
+    const result = buildManagerTurnInput({
+      readModel: {
+        version: 1,
+        projects: [
+          {
+            id: "project-1" as never,
+            title: "Q9 Code",
+            workspaceRoot: "/tmp/q9-code",
+            defaultModelSelection: null,
+            scripts: [],
+            createdAt: "2026-04-09T00:00:00.000Z",
+            updatedAt: "2026-04-09T00:00:00.000Z",
+          },
+        ],
+        threads: [
+          {
+            id: "thread-manager" as never,
+            projectId: "project-1" as never,
+            title: "Project manager",
+            role: "manager",
+            managerThreadId: null,
+            managerScratchpad: {
+              folderPath: "/tmp/q9-code/scratchpad/atlas-coordinator",
+              sessionLogPath: "/tmp/q9-code/scratchpad/atlas-coordinator/manager-session-log.md",
+            },
+            modelSelection: {
+              provider: "codex",
+              model: "gpt-5.4",
+            },
+            interactionMode: "default",
+            runtimeMode: "full-access",
+            branch: null,
+            worktreePath: null,
+            messages: [],
+            activities: [
+              {
+                id: "activity-worker-launch" as never,
+                kind: "manager.worker.launched",
+                tone: "info",
+                summary: 'Launched worker "Reconnect patch"',
+                payload: {
+                  workerId: "implement-reconnect",
+                  workerThreadId: "dc406b4a-f322-4c76-822f-40925cbe960e",
+                  workerTitle: "Reconnect patch",
+                },
+                turnId: null,
+                createdAt: "2026-04-09T00:00:01.000Z",
+              },
+            ],
+            latestTurn: null,
+            session: null,
+            createdAt: "2026-04-09T00:00:00.000Z",
+            updatedAt: "2026-04-09T00:00:01.000Z",
+            deletedAt: null,
+          },
+          {
+            id: "dc406b4a-f322-4c76-822f-40925cbe960e" as never,
+            projectId: "project-1" as never,
+            title: "Reconnect patch",
+            role: "worker",
+            managerThreadId: "thread-manager" as never,
+            managerScratchpad: null,
+            modelSelection: {
+              provider: "codex",
+              model: "gpt-5.4",
+            },
+            interactionMode: "default",
+            runtimeMode: "full-access",
+            branch: null,
+            worktreePath: null,
+            messages: [],
+            activities: [],
+            latestTurn: null,
+            session: {
+              threadId: "dc406b4a-f322-4c76-822f-40925cbe960e" as never,
+              status: "ready",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: null,
+              lastError: null,
+              updatedAt: "2026-04-09T00:00:01.000Z",
+            },
+            createdAt: "2026-04-09T00:00:00.000Z",
+            updatedAt: "2026-04-09T00:00:01.000Z",
+            deletedAt: null,
+          },
+        ],
+      } as never,
+      thread: {
+        id: "thread-manager" as never,
+        projectId: "project-1" as never,
+        title: "Project manager",
+        role: "manager",
+        managerThreadId: null,
+        managerScratchpad: {
+          folderPath: "/tmp/q9-code/scratchpad/atlas-coordinator",
+          sessionLogPath: "/tmp/q9-code/scratchpad/atlas-coordinator/manager-session-log.md",
+        },
+        modelSelection: {
+          provider: "codex",
+          model: "gpt-5.4",
+        },
+        interactionMode: "default",
+        runtimeMode: "full-access",
+        branch: null,
+        worktreePath: null,
+        messages: [],
+        activities: [
+          {
+            id: "activity-worker-launch" as never,
+            kind: "manager.worker.launched",
+            tone: "info",
+            summary: 'Launched worker "Reconnect patch"',
+            payload: {
+              workerId: "implement-reconnect",
+              workerThreadId: "dc406b4a-f322-4c76-822f-40925cbe960e",
+              workerTitle: "Reconnect patch",
+            },
+            turnId: null,
+            createdAt: "2026-04-09T00:00:01.000Z",
+          },
+        ],
+        latestTurn: null,
+        session: null,
+        createdAt: "2026-04-09T00:00:00.000Z",
+        updatedAt: "2026-04-09T00:00:01.000Z",
+        deletedAt: null,
+      } as never,
+      userMessageText: "Continue the reconnect worker on the same thread.",
+    });
+
+    expect(result).toContain(
+      "threadId=dc406b4a-f322-4c76-822f-40925cbe960e reuseId=implement-reconnect status=ready",
+    );
+    expect(result).toContain("copy its `reuseId` from the current worker list");
+    expect(result).toContain("Do not swap in the raw `threadId`");
+  });
 });
 
 describe("buildWorkerTurnInput", () => {
