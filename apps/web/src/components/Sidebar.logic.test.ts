@@ -11,6 +11,7 @@ import {
   isContextMenuPointerDown,
   organizeProjectThreadsForSidebar,
   orderItemsByPreferredIds,
+  resolveRenderedThreadNesting,
   resolveProjectStatusIndicator,
   resolveSidebarNewThreadSeedContext,
   resolveSidebarNewThreadEnvMode,
@@ -880,6 +881,92 @@ describe("organizeProjectThreadsForSidebar", () => {
     ]);
     expect(grouped.managerWorkerIdsByManagerId.get(ThreadId.makeUnsafe("manager-b"))).toEqual([
       ThreadId.makeUnsafe("worker-under-manager-b"),
+    ]);
+  });
+});
+
+describe("resolveRenderedThreadNesting", () => {
+  it("keeps a rendered worker top-level when its manager is not rendered", () => {
+    const result = resolveRenderedThreadNesting({
+      renderedThreadIds: [ThreadId.makeUnsafe("worker-under-manager")],
+      managerThreadIds: [ThreadId.makeUnsafe("manager-a")],
+      managerWorkerIdsByManagerId: new Map([
+        [ThreadId.makeUnsafe("manager-a"), [ThreadId.makeUnsafe("worker-under-manager")]],
+      ]),
+    });
+
+    expect(result.topLevelThreadIds).toEqual([ThreadId.makeUnsafe("worker-under-manager")]);
+    expect(
+      result.visibleWorkerThreadIdsByManagerId.get(ThreadId.makeUnsafe("manager-a")),
+    ).toBeUndefined();
+  });
+
+  it("nests rendered workers under their rendered manager", () => {
+    const result = resolveRenderedThreadNesting({
+      renderedThreadIds: [
+        ThreadId.makeUnsafe("manager-a"),
+        ThreadId.makeUnsafe("worker-under-manager"),
+        ThreadId.makeUnsafe("independent-worker"),
+      ],
+      managerThreadIds: [ThreadId.makeUnsafe("manager-a")],
+      managerWorkerIdsByManagerId: new Map([
+        [ThreadId.makeUnsafe("manager-a"), [ThreadId.makeUnsafe("worker-under-manager")]],
+      ]),
+    });
+
+    expect(result.topLevelThreadIds).toEqual([
+      ThreadId.makeUnsafe("manager-a"),
+      ThreadId.makeUnsafe("independent-worker"),
+    ]);
+    expect(result.visibleWorkerThreadIdsByManagerId.get(ThreadId.makeUnsafe("manager-a"))).toEqual([
+      ThreadId.makeUnsafe("worker-under-manager"),
+    ]);
+  });
+
+  it("hides nested workers when their manager is collapsed", () => {
+    const result = resolveRenderedThreadNesting({
+      renderedThreadIds: [
+        ThreadId.makeUnsafe("manager-a"),
+        ThreadId.makeUnsafe("worker-a"),
+        ThreadId.makeUnsafe("worker-b"),
+      ],
+      managerThreadIds: [ThreadId.makeUnsafe("manager-a")],
+      managerWorkerIdsByManagerId: new Map([
+        [
+          ThreadId.makeUnsafe("manager-a"),
+          [ThreadId.makeUnsafe("worker-a"), ThreadId.makeUnsafe("worker-b")],
+        ],
+      ]),
+      collapsedManagerThreadIds: new Set([ThreadId.makeUnsafe("manager-a")]),
+    });
+
+    expect(result.topLevelThreadIds).toEqual([ThreadId.makeUnsafe("manager-a")]);
+    expect(result.visibleWorkerThreadIdsByManagerId.get(ThreadId.makeUnsafe("manager-a"))).toEqual(
+      [],
+    );
+  });
+
+  it("keeps the active worker visible under a collapsed manager", () => {
+    const result = resolveRenderedThreadNesting({
+      renderedThreadIds: [
+        ThreadId.makeUnsafe("manager-a"),
+        ThreadId.makeUnsafe("worker-a"),
+        ThreadId.makeUnsafe("worker-b"),
+      ],
+      managerThreadIds: [ThreadId.makeUnsafe("manager-a")],
+      managerWorkerIdsByManagerId: new Map([
+        [
+          ThreadId.makeUnsafe("manager-a"),
+          [ThreadId.makeUnsafe("worker-a"), ThreadId.makeUnsafe("worker-b")],
+        ],
+      ]),
+      collapsedManagerThreadIds: new Set([ThreadId.makeUnsafe("manager-a")]),
+      activeThreadId: ThreadId.makeUnsafe("worker-b"),
+    });
+
+    expect(result.topLevelThreadIds).toEqual([ThreadId.makeUnsafe("manager-a")]);
+    expect(result.visibleWorkerThreadIdsByManagerId.get(ThreadId.makeUnsafe("manager-a"))).toEqual([
+      ThreadId.makeUnsafe("worker-b"),
     ]);
   });
 });

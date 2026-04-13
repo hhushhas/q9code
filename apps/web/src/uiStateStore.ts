@@ -19,6 +19,7 @@ const LEGACY_PERSISTED_STATE_KEYS = [
 interface PersistedUiState {
   expandedProjectCwds?: string[];
   projectOrderCwds?: string[];
+  collapsedManagerThreadIds?: string[];
 }
 
 export interface UiProjectState {
@@ -28,6 +29,7 @@ export interface UiProjectState {
 
 export interface UiThreadState {
   threadLastVisitedAtById: Record<string, string>;
+  managerWorkerListExpandedByManagerId: Record<string, boolean>;
 }
 
 export interface UiState extends UiProjectState, UiThreadState {}
@@ -46,10 +48,12 @@ const initialState: UiState = {
   projectExpandedById: {},
   projectOrder: [],
   threadLastVisitedAtById: {},
+  managerWorkerListExpandedByManagerId: {},
 };
 
 const persistedExpandedProjectCwds = new Set<string>();
 const persistedProjectOrderCwds: string[] = [];
+const persistedCollapsedManagerThreadIds = new Set<ThreadId>();
 const currentProjectCwdById = new Map<ProjectId, string>();
 let legacyKeysCleanedUp = false;
 
@@ -80,6 +84,7 @@ function readPersistedState(): UiState {
 function hydratePersistedProjectState(parsed: PersistedUiState): void {
   persistedExpandedProjectCwds.clear();
   persistedProjectOrderCwds.length = 0;
+  persistedCollapsedManagerThreadIds.clear();
   for (const cwd of parsed.expandedProjectCwds ?? []) {
     if (typeof cwd === "string" && cwd.length > 0) {
       persistedExpandedProjectCwds.add(cwd);
@@ -88,6 +93,11 @@ function hydratePersistedProjectState(parsed: PersistedUiState): void {
   for (const cwd of parsed.projectOrderCwds ?? []) {
     if (typeof cwd === "string" && cwd.length > 0 && !persistedProjectOrderCwds.includes(cwd)) {
       persistedProjectOrderCwds.push(cwd);
+    }
+  }
+  for (const threadId of parsed.collapsedManagerThreadIds ?? []) {
+    if (typeof threadId === "string" && threadId.length > 0) {
+      persistedCollapsedManagerThreadIds.add(threadId as ThreadId);
     }
   }
 }
@@ -107,11 +117,15 @@ function persistState(state: UiState): void {
       const cwd = currentProjectCwdById.get(projectId);
       return cwd ? [cwd] : [];
     });
+    const collapsedManagerThreadIds = Object.entries(state.managerWorkerListExpandedByManagerId)
+      .filter(([, expanded]) => expanded === false)
+      .map(([threadId]) => threadId);
     window.localStorage.setItem(
       PERSISTED_STATE_KEY,
       JSON.stringify({
         expandedProjectCwds,
         projectOrderCwds,
+        collapsedManagerThreadIds,
       } satisfies PersistedUiState),
     );
     if (!legacyKeysCleanedUp) {
@@ -252,6 +266,11 @@ export function syncThreads(state: UiState, threads: readonly SyncThreadInput[])
       retainedThreadIds.has(threadId as ThreadId),
     ),
   );
+  const nextManagerWorkerListExpandedByManagerId = Object.fromEntries(
+    Object.entries(state.managerWorkerListExpandedByManagerId).filter(([threadId]) =>
+      retainedThreadIds.has(threadId as ThreadId),
+    ),
+  );
   for (const thread of threads) {
     if (
       nextThreadLastVisitedAtById[thread.id] === undefined &&
@@ -260,13 +279,26 @@ export function syncThreads(state: UiState, threads: readonly SyncThreadInput[])
     ) {
       nextThreadLastVisitedAtById[thread.id] = thread.seedVisitedAt;
     }
+    if (
+      nextManagerWorkerListExpandedByManagerId[thread.id] === undefined &&
+      persistedCollapsedManagerThreadIds.has(thread.id)
+    ) {
+      nextManagerWorkerListExpandedByManagerId[thread.id] = false;
+    }
   }
-  if (recordsEqual(state.threadLastVisitedAtById, nextThreadLastVisitedAtById)) {
+  if (
+    recordsEqual(state.threadLastVisitedAtById, nextThreadLastVisitedAtById) &&
+    recordsEqual(
+      state.managerWorkerListExpandedByManagerId,
+      nextManagerWorkerListExpandedByManagerId,
+    )
+  ) {
     return state;
   }
   return {
     ...state,
     threadLastVisitedAtById: nextThreadLastVisitedAtById,
+    managerWorkerListExpandedByManagerId: nextManagerWorkerListExpandedByManagerId,
   };
 }
 
@@ -317,14 +349,22 @@ export function markThreadUnread(
 }
 
 export function clearThreadUi(state: UiState, threadId: ThreadId): UiState {
-  if (!(threadId in state.threadLastVisitedAtById)) {
+  if (
+    !(threadId in state.threadLastVisitedAtById) &&
+    !(threadId in state.managerWorkerListExpandedByManagerId)
+  ) {
     return state;
   }
   const nextThreadLastVisitedAtById = { ...state.threadLastVisitedAtById };
+  const nextManagerWorkerListExpandedByManagerId = {
+    ...state.managerWorkerListExpandedByManagerId,
+  };
   delete nextThreadLastVisitedAtById[threadId];
+  delete nextManagerWorkerListExpandedByManagerId[threadId];
   return {
     ...state,
     threadLastVisitedAtById: nextThreadLastVisitedAtById,
+    managerWorkerListExpandedByManagerId: nextManagerWorkerListExpandedByManagerId,
   };
 }
 
@@ -352,6 +392,34 @@ export function setProjectExpanded(
     projectExpandedById: {
       ...state.projectExpandedById,
       [projectId]: expanded,
+    },
+  };
+}
+
+export function toggleManagerWorkerList(state: UiState, managerThreadId: ThreadId): UiState {
+  const expanded = state.managerWorkerListExpandedByManagerId[managerThreadId] ?? true;
+  return {
+    ...state,
+    managerWorkerListExpandedByManagerId: {
+      ...state.managerWorkerListExpandedByManagerId,
+      [managerThreadId]: !expanded,
+    },
+  };
+}
+
+export function setManagerWorkerListExpanded(
+  state: UiState,
+  managerThreadId: ThreadId,
+  expanded: boolean,
+): UiState {
+  if ((state.managerWorkerListExpandedByManagerId[managerThreadId] ?? true) === expanded) {
+    return state;
+  }
+  return {
+    ...state,
+    managerWorkerListExpandedByManagerId: {
+      ...state.managerWorkerListExpandedByManagerId,
+      [managerThreadId]: expanded,
     },
   };
 }
@@ -389,6 +457,8 @@ interface UiStateStore extends UiState {
   clearThreadUi: (threadId: ThreadId) => void;
   toggleProject: (projectId: ProjectId) => void;
   setProjectExpanded: (projectId: ProjectId, expanded: boolean) => void;
+  toggleManagerWorkerList: (managerThreadId: ThreadId) => void;
+  setManagerWorkerListExpanded: (managerThreadId: ThreadId, expanded: boolean) => void;
   reorderProjects: (draggedProjectId: ProjectId, targetProjectId: ProjectId) => void;
 }
 
@@ -404,6 +474,10 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
   toggleProject: (projectId) => set((state) => toggleProject(state, projectId)),
   setProjectExpanded: (projectId, expanded) =>
     set((state) => setProjectExpanded(state, projectId, expanded)),
+  toggleManagerWorkerList: (managerThreadId) =>
+    set((state) => toggleManagerWorkerList(state, managerThreadId)),
+  setManagerWorkerListExpanded: (managerThreadId, expanded) =>
+    set((state) => setManagerWorkerListExpanded(state, managerThreadId, expanded)),
   reorderProjects: (draggedProjectId, targetProjectId) =>
     set((state) => reorderProjects(state, draggedProjectId, targetProjectId)),
 }));

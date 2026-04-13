@@ -96,6 +96,7 @@ import {
 import { ProjectFavicon } from "./ProjectFavicon";
 import {
   getVisibleSidebarThreadIds,
+  resolveRenderedThreadNesting,
   getVisibleThreadsForProject,
   isContextMenuPointerDown,
   organizeProjectThreadsForSidebar,
@@ -279,6 +280,9 @@ interface SidebarThreadRowProps {
   attemptArchiveThread: (threadId: ThreadId) => Promise<void>;
   openPrLink: (event: MouseEvent<HTMLElement>, prUrl: string) => void;
   pr: ThreadPr | null;
+  managerWorkerCount?: number;
+  managerWorkerListExpanded?: boolean;
+  toggleManagerWorkerList?: ((managerThreadId: ThreadId) => void) | null;
 }
 
 function SidebarThreadRow(props: SidebarThreadRowProps) {
@@ -421,9 +425,43 @@ function SidebarThreadRow(props: SidebarThreadRowProps) {
             <>
               <span className="min-w-0 flex-1 truncate text-xs">{thread.title}</span>
               {thread.role === "manager" && (
-                <span className="shrink-0 rounded-full border border-border/70 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                  M
-                </span>
+                <>
+                  <span className="shrink-0 rounded-full border border-border/70 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                    M
+                  </span>
+                  {props.managerWorkerCount && props.toggleManagerWorkerList ? (
+                    <button
+                      type="button"
+                      data-thread-selection-safe
+                      aria-label={
+                        props.managerWorkerListExpanded
+                          ? `Collapse workers under ${thread.title}`
+                          : `Expand workers under ${thread.title}`
+                      }
+                      title={
+                        props.managerWorkerListExpanded
+                          ? "Collapse worker threads"
+                          : "Expand worker threads"
+                      }
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border/70 px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground transition-colors hover:border-border hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+                      onPointerDown={(event) => {
+                        event.stopPropagation();
+                      }}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        props.toggleManagerWorkerList?.(thread.id);
+                      }}
+                    >
+                      <ChevronRightIcon
+                        className={`size-2.5 transition-transform duration-150 ${
+                          props.managerWorkerListExpanded ? "rotate-90" : ""
+                        }`}
+                      />
+                      <span>{props.managerWorkerCount}</span>
+                    </button>
+                  ) : null}
+                </>
               )}
             </>
           )}
@@ -677,14 +715,21 @@ export default function Sidebar() {
   const projects = useStore((store) => store.projects);
   const sidebarThreadsById = useStore((store) => store.sidebarThreadsById);
   const threadIdsByProjectId = useStore((store) => store.threadIdsByProjectId);
-  const { projectExpandedById, projectOrder, threadLastVisitedAtById } = useUiStateStore(
+  const {
+    managerWorkerListExpandedByManagerId,
+    projectExpandedById,
+    projectOrder,
+    threadLastVisitedAtById,
+  } = useUiStateStore(
     useShallow((store) => ({
+      managerWorkerListExpandedByManagerId: store.managerWorkerListExpandedByManagerId,
       projectExpandedById: store.projectExpandedById,
       projectOrder: store.projectOrder,
       threadLastVisitedAtById: store.threadLastVisitedAtById,
     })),
   );
   const markThreadUnread = useUiStateStore((store) => store.markThreadUnread);
+  const toggleManagerWorkerList = useUiStateStore((store) => store.toggleManagerWorkerList);
   const toggleProject = useUiStateStore((store) => store.toggleProject);
   const reorderProjects = useUiStateStore((store) => store.reorderProjects);
   const clearComposerDraftForThread = useComposerDraftStore((store) => store.clearDraftThread);
@@ -1505,9 +1550,26 @@ export default function Sidebar() {
           hiddenThreads.map((thread) => resolveProjectThreadStatus(thread)),
         );
         const orderedProjectThreadIds = orderedThreads.map((thread) => thread.id);
-        const renderedThreadIds = pinnedCollapsedThread
+        const previewThreadIds = pinnedCollapsedThread
           ? [pinnedCollapsedThread.id]
           : visibleProjectThreads.map((thread) => thread.id);
+        const collapsedManagerThreadIds = new Set(
+          managerThreadIds.filter(
+            (threadId) => (managerWorkerListExpandedByManagerId[threadId] ?? true) === false,
+          ),
+        );
+        const { topLevelThreadIds, visibleWorkerThreadIdsByManagerId } =
+          resolveRenderedThreadNesting({
+            renderedThreadIds: previewThreadIds,
+            managerThreadIds,
+            managerWorkerIdsByManagerId,
+            collapsedManagerThreadIds,
+            activeThreadId: routeThreadId,
+          });
+        const renderedThreadIds = topLevelThreadIds.flatMap((threadId) => [
+          threadId,
+          ...(visibleWorkerThreadIdsByManagerId.get(threadId) ?? []),
+        ]);
         const showEmptyThreadState = project.expanded && projectThreads.length === 0;
 
         return {
@@ -1520,6 +1582,8 @@ export default function Sidebar() {
           project,
           projectStatus,
           renderedThreadIds,
+          topLevelThreadIds,
+          visibleWorkerThreadIdsByManagerId,
           showEmptyThreadState,
           shouldShowThreadPanel,
           isThreadListExpanded,
@@ -1532,6 +1596,7 @@ export default function Sidebar() {
       sortedProjects,
       sidebarThreadsById,
       threadIdsByProjectId,
+      managerWorkerListExpandedByManagerId,
       threadLastVisitedAtById,
     ],
   );
@@ -1662,31 +1727,23 @@ export default function Sidebar() {
       hasHiddenThreads,
       hiddenThreadStatus,
       managerThreadCount,
-      managerThreadIds,
       managerWorkerIdsByManagerId,
       orderedProjectThreadIds,
       project,
       projectStatus,
-      renderedThreadIds,
       showEmptyThreadState,
       shouldShowThreadPanel,
       isThreadListExpanded,
+      topLevelThreadIds,
+      visibleWorkerThreadIdsByManagerId,
     } = renderedProject;
-    const renderedThreadIdSet = new Set(renderedThreadIds);
-    const nestedWorkerThreadIdSet = new Set<ThreadId>();
-    for (const managerThreadId of managerThreadIds) {
-      const workerThreadIds = managerWorkerIdsByManagerId.get(managerThreadId) ?? [];
-      for (const workerThreadId of workerThreadIds) {
-        if (renderedThreadIdSet.has(workerThreadId)) {
-          nestedWorkerThreadIdSet.add(workerThreadId);
-        }
-      }
-    }
-    const topLevelThreadIds = renderedThreadIds.filter(
-      (threadId) => !nestedWorkerThreadIdSet.has(threadId),
-    );
-
-    const renderThreadRow = (threadId: ThreadId) => (
+    const renderThreadRow = (
+      threadId: ThreadId,
+      options?: {
+        managerWorkerCount?: number;
+        managerWorkerListExpanded?: boolean;
+      },
+    ) => (
       <SidebarThreadRow
         key={threadId}
         threadId={threadId}
@@ -1714,6 +1771,13 @@ export default function Sidebar() {
         attemptArchiveThread={attemptArchiveThread}
         openPrLink={openPrLink}
         pr={prByThreadId.get(threadId) ?? null}
+        toggleManagerWorkerList={toggleManagerWorkerList}
+        {...(options?.managerWorkerCount !== undefined
+          ? { managerWorkerCount: options.managerWorkerCount }
+          : {})}
+        {...(options?.managerWorkerListExpanded !== undefined
+          ? { managerWorkerListExpanded: options.managerWorkerListExpanded }
+          : {})}
       />
     );
 
@@ -1819,17 +1883,31 @@ export default function Sidebar() {
               const thread = sidebarThreadsById[threadId];
               const nestedWorkerThreadIds =
                 thread?.role === "manager"
-                  ? (managerWorkerIdsByManagerId.get(threadId) ?? []).filter((workerThreadId) =>
-                      renderedThreadIdSet.has(workerThreadId),
-                    )
+                  ? (visibleWorkerThreadIdsByManagerId.get(threadId) ?? [])
                   : [];
+              const managerWorkerCount = managerWorkerIdsByManagerId.get(threadId)?.length ?? 0;
+              const managerWorkerListExpanded =
+                thread?.role === "manager"
+                  ? (managerWorkerListExpandedByManagerId[threadId] ?? true)
+                  : undefined;
+              const managerThreadRowOptions =
+                thread?.role === "manager"
+                  ? {
+                      managerWorkerCount,
+                      ...(managerWorkerListExpanded !== undefined
+                        ? { managerWorkerListExpanded }
+                        : {}),
+                    }
+                  : undefined;
 
               return (
                 <Fragment key={threadId}>
-                  {renderThreadRow(threadId)}
+                  {renderThreadRow(threadId, managerThreadRowOptions)}
                   {nestedWorkerThreadIds.length > 0 ? (
                     <SidebarMenuSub className="ml-3 w-full gap-0.5 border-l border-border/60 pl-2">
-                      {nestedWorkerThreadIds.map(renderThreadRow)}
+                      {nestedWorkerThreadIds.map((nestedThreadId) =>
+                        renderThreadRow(nestedThreadId),
+                      )}
                     </SidebarMenuSub>
                   ) : null}
                 </Fragment>

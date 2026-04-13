@@ -5,9 +5,11 @@ import {
   clearThreadUi,
   markThreadUnread,
   reorderProjects,
+  setManagerWorkerListExpanded,
   setProjectExpanded,
   syncProjects,
   syncThreads,
+  toggleManagerWorkerList,
   type UiState,
 } from "./uiStateStore";
 
@@ -16,6 +18,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     projectExpandedById: {},
     projectOrder: [],
     threadLastVisitedAtById: {},
+    managerWorkerListExpandedByManagerId: {},
     ...overrides,
   };
 }
@@ -137,12 +140,19 @@ describe("uiStateStore pure functions", () => {
         [thread1]: "2026-02-25T12:35:00.000Z",
         [thread2]: "2026-02-25T12:36:00.000Z",
       },
+      managerWorkerListExpandedByManagerId: {
+        [thread1]: false,
+        [thread2]: true,
+      },
     });
 
     const next = syncThreads(initialState, [{ id: thread1 }]);
 
     expect(next.threadLastVisitedAtById).toEqual({
       [thread1]: "2026-02-25T12:35:00.000Z",
+    });
+    expect(next.managerWorkerListExpandedByManagerId).toEqual({
+      [thread1]: false,
     });
   });
 
@@ -183,10 +193,42 @@ describe("uiStateStore pure functions", () => {
       threadLastVisitedAtById: {
         [thread1]: "2026-02-25T12:35:00.000Z",
       },
+      managerWorkerListExpandedByManagerId: {
+        [thread1]: false,
+      },
     });
 
     const next = clearThreadUi(initialState, thread1);
 
     expect(next.threadLastVisitedAtById).toEqual({});
+    expect(next.managerWorkerListExpandedByManagerId).toEqual({});
+  });
+
+  it("setManagerWorkerListExpanded updates manager worker visibility without touching thread visits", () => {
+    const managerThreadId = ThreadId.makeUnsafe("thread-manager");
+    const workerThreadId = ThreadId.makeUnsafe("thread-worker");
+    const initialState = makeUiState({
+      threadLastVisitedAtById: {
+        [workerThreadId]: "2026-02-25T12:35:00.000Z",
+      },
+    });
+
+    const next = setManagerWorkerListExpanded(initialState, managerThreadId, false);
+
+    expect(next.managerWorkerListExpandedByManagerId[managerThreadId]).toBe(false);
+    expect(next.threadLastVisitedAtById[workerThreadId]).toBe("2026-02-25T12:35:00.000Z");
+  });
+
+  it("toggleManagerWorkerList flips collapsed manager worker state", () => {
+    const managerThreadId = ThreadId.makeUnsafe("thread-manager");
+    const initialState = makeUiState({
+      managerWorkerListExpandedByManagerId: {
+        [managerThreadId]: false,
+      },
+    });
+
+    const next = toggleManagerWorkerList(initialState, managerThreadId);
+
+    expect(next.managerWorkerListExpandedByManagerId[managerThreadId]).toBe(true);
   });
 });

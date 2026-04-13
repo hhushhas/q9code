@@ -550,6 +550,55 @@ export function organizeProjectThreadsForSidebar<
   };
 }
 
+export function resolveRenderedThreadNesting<TThreadId>(input: {
+  renderedThreadIds: readonly TThreadId[];
+  managerThreadIds: readonly TThreadId[];
+  managerWorkerIdsByManagerId: ReadonlyMap<TThreadId, readonly TThreadId[]>;
+  collapsedManagerThreadIds?: ReadonlySet<TThreadId>;
+  activeThreadId?: TThreadId | null;
+}): {
+  topLevelThreadIds: TThreadId[];
+  visibleWorkerThreadIdsByManagerId: ReadonlyMap<TThreadId, readonly TThreadId[]>;
+} {
+  const {
+    activeThreadId = null,
+    collapsedManagerThreadIds,
+    managerThreadIds,
+    managerWorkerIdsByManagerId,
+    renderedThreadIds,
+  } = input;
+  const renderedThreadIdSet = new Set(renderedThreadIds);
+  const renderedManagerThreadIdSet = new Set(
+    managerThreadIds.filter((threadId) => renderedThreadIdSet.has(threadId)),
+  );
+  const visibleWorkerThreadIdsByManagerId = new Map<TThreadId, readonly TThreadId[]>();
+  const nestedWorkerThreadIds = new Set<TThreadId>();
+
+  for (const managerThreadId of renderedManagerThreadIdSet) {
+    const renderedWorkerThreadIds = (managerWorkerIdsByManagerId.get(managerThreadId) ?? []).filter(
+      (threadId) => renderedThreadIdSet.has(threadId),
+    );
+    const visibleWorkerThreadIds =
+      collapsedManagerThreadIds?.has(managerThreadId) &&
+      activeThreadId !== null &&
+      renderedWorkerThreadIds.includes(activeThreadId)
+        ? [activeThreadId]
+        : collapsedManagerThreadIds?.has(managerThreadId)
+          ? []
+          : renderedWorkerThreadIds;
+
+    visibleWorkerThreadIdsByManagerId.set(managerThreadId, visibleWorkerThreadIds);
+    for (const workerThreadId of renderedWorkerThreadIds) {
+      nestedWorkerThreadIds.add(workerThreadId);
+    }
+  }
+
+  return {
+    topLevelThreadIds: renderedThreadIds.filter((threadId) => !nestedWorkerThreadIds.has(threadId)),
+    visibleWorkerThreadIdsByManagerId,
+  };
+}
+
 export function getFallbackThreadIdAfterDelete<
   T extends Pick<Thread, "id" | "projectId" | "createdAt" | "updatedAt"> & SidebarThreadSortInput,
 >(input: {
